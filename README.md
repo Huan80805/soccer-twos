@@ -17,28 +17,27 @@ git clone https://github.com/your-github-user/soccer-twos-starter.git
 
 cd soccer-twos-starter/
 
-### 2. Create and activate conda environment
+### 2.1 For MAC
+`bash bash env_setup.sh`
+
+### 2.2 For Linux
+```bash
 conda create --name soccertwos python=3.8 -y
-
 conda activate soccertwos
-
-### 3. Downgrade build tools for compatibility
 pip install pip==23.3.2 setuptools==65.5.0 wheel==0.38.4
-
 pip cache purge
-
-### 4. Install requirements
 pip install -r requirements.txt
+```
 
-### 5. Fix protobuf and pydantic compatibility
+### 3. Fix protobuf and pydantic compatibility
 pip install protobuf==3.20.3
 
 pip install pydantic==1.10.13
 
-### 5. Run `python example_random.py` to watch a random agent play the game
+### 4. Run `python example_random.py` to watch a random agent play the game
 python example_random_players.py
 
-### 6. Train using any of the example scripts
+### 5. Train using any of the example scripts
 python example_ray_ppo_sp_still.py
 
 python example_ray_team_vs_random.py
