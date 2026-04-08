@@ -44,6 +44,38 @@ python example_ray_team_vs_random.py
 
 etc.
 
+## Ray Notes
+
+Switch to `init_ray()` from [utils.py](utils.py) instead of hardcoding `ray.init(...)` in each example script.
+
+- Default behavior is plain `ray.init()`.
+- To connect to a Ray cluster started from the CLI, use `SOCCER_TWOS_RAY_INIT=auto`.
+- To disable the dashboard from the repo side, use `SOCCER_TWOS_RAY_INIT=no-dashboard`.
+
+### Local Ray Package Patch
+
+On the PACE machine used during debugging, Ray 1.4 repeatedly logged:
+
+```text
+socket.gaierror: [Errno -2] Name or service not known
+```
+
+Training still worked, but the dashboard/metrics agent was noisy because the node hostname resolution path was failing in that environment.
+
+To suppress that warning in the `soccertwos` Conda environment, the local Ray package was patched here:
+
+`~/miniconda3/envs/soccertwos/lib/python3.8/site-packages/ray/_private/metrics_agent.py`
+
+The change forces Ray's Prometheus exporter to bind to `127.0.0.1`:
+
+```python
+prometheus_exporter.Options(
+    namespace="ray", port=metrics_export_port, address="127.0.0.1"
+)
+```
+
+Notes: The main tradeoff is that the metrics exporter is bound to localhost, so remote access to those metrics from another machine would not work without reverting the package patch.
+
 ## Agent Packaging
 
 To receive full credit on the assignment and ensure the teaching staff can properly compile your code, you must follow these instructions:
@@ -73,4 +105,7 @@ To examine the baseline agent, you must extract the `ceia_baseline_agent` folder
 , to examine the random agent vs. the baseline agent.
 
 
-
+## PACE commands
+```bash
+salloc -N1 -t2:00:00 --gres=gpu:V100:1 --cpus-per-task=16 --mem=128G
+```

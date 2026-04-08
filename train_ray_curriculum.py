@@ -1,11 +1,10 @@
 import yaml
 
-import ray
 from ray import tune
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from soccer_twos import EnvType
 
-from utils import create_rllib_env, sample_pos_vel, sample_player
+from utils import create_rllib_env, init_ray, sample_pos_vel, sample_player
 
 
 NUM_ENVS_PER_WORKER = 3
@@ -48,7 +47,7 @@ class CurriculumUpdateCallback(DefaultCallbacks):
 
 
 if __name__ == "__main__":
-    ray.init()
+    init_ray()
 
     tune.registry.register_env("Soccer", create_rllib_env)
     temp_env = create_rllib_env()

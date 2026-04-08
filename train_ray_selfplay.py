@@ -1,8 +1,7 @@
 import numpy as np
-import ray
 from ray import tune
 from ray.rllib.agents.callbacks import DefaultCallbacks
-from utils import create_rllib_env
+from utils import create_rllib_env, init_ray
 
 
 NUM_ENVS_PER_WORKER = 3
@@ -37,7 +36,7 @@ class SelfPlayUpdateCallback(DefaultCallbacks):
 
 
 if __name__ == "__main__":
-    ray.init()
+    init_ray()
 
     tune.registry.register_env("Soccer", create_rllib_env)
     temp_env = create_rllib_env()

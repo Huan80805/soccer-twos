@@ -1,6 +1,10 @@
 from random import uniform as randfloat
+import fcntl
+import os
+import socket
 
 import gym
+import ray
 from ray.rllib import MultiAgentEnv
 import soccer_twos
 
@@ -12,6 +16,67 @@ class RLLibWrapper(gym.core.Wrapper, MultiAgentEnv):
 
     pass
 
+_UNITY_PORT_LOCK = "/tmp/soccer_twos_unity_port.lock"
+_UNITY_PORT_STATE = "/tmp/soccer_twos_unity_port.state"
+
+
+def _port_is_available(port: int) -> bool:
+    for family, bind_addr in (
+        (socket.AF_INET, ("0.0.0.0", port)),
+        (socket.AF_INET6, ("::", port)),
+    ):
+        sock = None
+        try:
+            sock = socket.socket(family, socket.SOCK_STREAM)
+            sock.bind(bind_addr)
+        except OSError:
+            return False
+        finally:
+            if sock is not None:
+                sock.close()
+    return True
+
+
+def _reserve_unity_base_port(start_port: int) -> int:
+    os.makedirs(os.path.dirname(_UNITY_PORT_LOCK), exist_ok=True)
+    with open(_UNITY_PORT_LOCK, "w") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+
+        try:
+            with open(_UNITY_PORT_STATE, "r") as state_file:
+                next_port = int(state_file.read().strip())
+        except (FileNotFoundError, ValueError):
+            next_port = start_port
+
+        next_port = max(next_port, start_port)
+        while next_port < 65535:
+            if _port_is_available(next_port):
+                with open(_UNITY_PORT_STATE, "w") as state_file:
+                    state_file.write(str(next_port + 1))
+                return next_port
+            next_port += 1
+
+    raise RuntimeError("Could not reserve a free Unity base port.")
+
+
+def init_ray():
+    mode = os.environ.get("SOCCER_TWOS_RAY_INIT", "default").lower()
+    if mode == "default":
+        return ray.init()
+    if mode == "auto":
+        return ray.init(address="auto")
+    if mode == "no-dashboard":
+        return ray.init(
+            include_dashboard=False,
+            _node_ip_address="127.0.0.1",
+            log_to_driver=os.environ.get("SOCCER_TWOS_RAY_LOG_TO_DRIVER", "0")
+            == "1",
+        )
+    raise ValueError(
+        "Unsupported SOCCER_TWOS_RAY_INIT value. "
+        "Use one of: default, auto, no-dashboard"
+    )
+
 
 def create_rllib_env(env_config: dict = {}):
     """
@@ -22,11 +87,10 @@ def create_rllib_env(env_config: dict = {}):
             - variation: one of soccer_twos.EnvType. Defaults to EnvType.multiagent_player.
             - opponent_policy: a Callable for your agent to train against. Defaults to a random policy.
     """
-    if hasattr(env_config, "worker_index"):
-        env_config["worker_id"] = (
-            env_config.worker_index * env_config.get("num_envs_per_worker", 1)
-            + env_config.vector_index
-        )
+    env_config = dict(env_config)
+    requested_base_port = env_config.get("base_port", 50039)
+    env_config["base_port"] = _reserve_unity_base_port(requested_base_port)
+    env_config["worker_id"] = 0
     env = soccer_twos.make(**env_config)
     # env = TransitionRecorderWrapper(env)
     if "multiagent" in env_config and not env_config["multiagent"]:
