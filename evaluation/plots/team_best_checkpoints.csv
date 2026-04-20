@@ -1,0 +1,11 @@
+opponent,run_name,checkpoint_iteration,overall,blue,orange,wins,losses,draws,games,checkpoint_path
+CEIA,PPO_baseline_team_vs_random,1250,0.22,0.2,0.24,11,39,0,50,ray_results/PPO_baseline_team_vs_random/PPO_Soccer_a1f68_00000_0_2026-04-11_01-52-32/checkpoint_001250/checkpoint-1250
+CEIA,PPO_reward_exp_prog005_clear0,1200,0.18,0.16,0.2,9,41,0,50,ray_results/PPO_reward_exp_prog005_clear0/PPO_Soccer_f6666_00000_0_2026-04-11_01-54-54/checkpoint_001200/checkpoint-1200
+CEIA,PPO_reward_exp_prog005_clear01,1100,0.24,0.2,0.28,12,38,0,50,ray_results/PPO_reward_exp_prog005_clear01/PPO_Soccer_ceea3_00000_0_2026-04-11_01-53-48/checkpoint_001100/checkpoint-1100
+CEIA,PPO_reward_exp_prog01_clear00,600,0.12,0.12,0.12,6,44,0,50,ray_results/PPO_reward_exp_prog01_clear00/PPO_Soccer_54bd8_00000_0_2026-04-10_16-17-43/checkpoint_000600/checkpoint-600
+CEIA,PPO_reward_exp_prog01_clear01,1000,0.22,0.2,0.24,11,39,0,50,ray_results/PPO_reward_exp_prog01_clear01/PPO_Soccer_80c7d_00000_0_2026-04-10_16-18-57/checkpoint_001000/checkpoint-1000
+Random,PPO_baseline_team_vs_random,1250,0.86,0.8,0.92,43,3,4,50,/nethome/tyang416/soccer-twos/ray_results/PPO_baseline_team_vs_random/PPO_Soccer_a1f68_00000_0_2026-04-11_01-52-32/checkpoint_001250/checkpoint-1250
+Random,PPO_reward_exp_prog005_clear0,1100,0.92,0.88,0.96,46,3,1,50,/nethome/tyang416/soccer-twos/ray_results/PPO_reward_exp_prog005_clear0/PPO_Soccer_f6666_00000_0_2026-04-11_01-54-54/checkpoint_001100/checkpoint-1100
+Random,PPO_reward_exp_prog005_clear01,1100,0.7,0.8,0.6,35,9,6,50,/nethome/tyang416/soccer-twos/ray_results/PPO_reward_exp_prog005_clear01/PPO_Soccer_ceea3_00000_0_2026-04-11_01-53-48/checkpoint_001100/checkpoint-1100
+Random,PPO_reward_exp_prog01_clear00,1200,0.72,0.76,0.68,36,5,9,50,/nethome/tyang416/soccer-twos/ray_results/PPO_reward_exp_prog01_clear00/PPO_Soccer_54bd8_00000_0_2026-04-10_16-17-43/checkpoint_001200/checkpoint-1200
+Random,PPO_reward_exp_prog01_clear01,1200,1.0,1.0,1.0,50,0,0,50,/nethome/tyang416/soccer-twos/ray_results/PPO_reward_exp_prog01_clear01/PPO_Soccer_80c7d_00000_0_2026-04-10_16-18-57/checkpoint_001200/checkpoint-1200

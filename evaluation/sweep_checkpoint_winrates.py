@@ -1,7 +1,12 @@
 import argparse
 import json
-import os
+import sys
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+EVALUATION_DIR = Path(__file__).resolve().parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 import gym
 import numpy as np
@@ -17,14 +22,29 @@ from soccer_twos import evaluate as soccer_evaluate
 ALGORITHM = "PPO"
 DEFAULT_OUTPUT = "checkpoint_winrates.jsonl"
 DEFAULT_EPISODES = 10
-DEFAULT_BASE_PORT = 55000
+DEFAULT_BASE_PORT = 65000
 
-RAY_RESULTS_DIR = Path("ray_results")
-BASELINE_RUN_NAME = "PPO_baseline_team_vs_random"
+RAY_RESULTS_DIR = REPO_ROOT / "ray_results"
 OPPONENT_MODULES = {
     "random": "example_player_agent",
     "ceia": "ceia_baseline_agent",
 }
+
+
+def get_agent_kind(run_name):
+    if run_name.startswith("PPO_baseline"):
+        # PPO baseline against random team agent
+        return "ppo_baseline"
+    elif run_name.startswith("PPO_reward_exp"):
+        # PPO with reward shaping against random team agent
+        return "ppo_reward_shaping"
+    elif run_name.startswith("PPO_selfplay_baseline"):
+        # PPO self-play trained team agent
+        return "selfplay_ppo_baseline"
+    elif run_name.startswith("PPO_selfplay_reward"):
+        # PPO self-play trained team agent with reward shaping
+        return "selfplay_ppo_reward"
+    raise ValueError(f"Unrecognized run name: {run_name}")
 
 
 class DummyEnv(BaseEnv):
@@ -87,11 +107,11 @@ class CheckpointTeamPPOAgent:
         trainer_cls = get_trainable_cls(ALGORITHM)
         self.agent = trainer_cls(env=config["env"], config=config)
         self.agent.restore(self.checkpoint_path)
-        self.policy = self.agent.get_policy()
+        self.policy = self._get_restored_policy()
 
         if self.policy is None:
             raise RuntimeError(
-                f"Failed to restore a default policy from {self.checkpoint_path}."
+                f"Failed to restore an inference policy from {self.checkpoint_path}."
             )
 
     @staticmethod
@@ -140,6 +160,27 @@ class CheckpointTeamPPOAgent:
     def close(self):
         self.agent.stop()
 
+    def _get_restored_policy(self):
+        """
+        Team-vs-random checkpoints are single-agent RLlib checkpoints and use
+        RLlib's default policy id. Self-play checkpoints are multiagent and use
+        the explicit policy id `default`.
+        """
+
+        policy = self.agent.get_policy("default")
+        if policy is not None:
+            return policy
+
+        policy = self.agent.get_policy()
+        if policy is not None:
+            return policy
+
+        policy_map = self.agent.workers.local_worker().policy_map
+        if len(policy_map) == 1:
+            return next(iter(policy_map.values()))
+
+        return None
+
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -179,10 +220,21 @@ def parse_args():
         default=None,
         help="Optional run-name filter, e.g. PPO_reward_exp_prog005_clear0.",
     )
+    parser.add_argument(
+        "--run-kind",
+        default=None,
+        choices=("ppo_baseline", "ppo_reward_shaping", "selfplay_ppo_baseline", "selfplay_ppo_reward"),
+        help="Optional run-kind filter.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-evaluate checkpoints even if matching records already exist in the output JSONL.",
+    )
     return parser.parse_args()
 
 
-def iter_checkpoints(run_name_filter=None):
+def iter_checkpoints(run_name_filter=None, run_kind_filter=None):
     checkpoint_paths = sorted(
         path
         for path in RAY_RESULTS_DIR.glob("**/checkpoint-*")
@@ -193,6 +245,8 @@ def iter_checkpoints(run_name_filter=None):
         run_name = checkpoint_path.parents[2].name
         if run_name_filter and run_name != run_name_filter:
             continue
+        if run_kind_filter and get_agent_kind(run_name) not in run_kind_filter:
+            continue
         yield checkpoint_path
 
 
@@ -201,6 +255,7 @@ def build_checkpoint_record(checkpoint_path: Path):
     trial_dir = checkpoint_path.parents[1]
     checkpoint_dir = checkpoint_path.parent
     checkpoint_iteration = int(checkpoint_path.name.split("-")[-1])
+    agent_kind = get_agent_kind(run_name)
 
     return {
         "run_name": run_name,
@@ -208,8 +263,45 @@ def build_checkpoint_record(checkpoint_path: Path):
         "checkpoint_dir": str(checkpoint_dir),
         "checkpoint_path": str(checkpoint_path),
         "checkpoint_iteration": checkpoint_iteration,
-        "agent_kind": "ppo_baseline" if run_name == BASELINE_RUN_NAME else "reward_shaping",
+        "agent_kind": agent_kind,
     }
+
+def sweep_key(checkpoint_path, opponent_module, episodes):
+    return (
+        str(Path(checkpoint_path).resolve()),
+        opponent_module,
+        int(episodes),
+    )
+
+
+def load_completed_sweeps(output_path: Path):
+    completed = set()
+    if not output_path.exists():
+        return completed
+
+    with open(output_path) as output_file:
+        for line_number, line in enumerate(output_file, start=1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                print(
+                    f"Skipping malformed JSONL record in {output_path} "
+                    f"at line {line_number}."
+                )
+                continue
+
+            checkpoint_path = record.get("checkpoint_path")
+            opponent = record.get("opponent")
+            episodes = record.get("episodes")
+            if checkpoint_path is None or opponent is None or episodes is None:
+                continue
+
+            completed.add(sweep_key(checkpoint_path, opponent, int(episodes)))
+
+    return completed
 
 
 def summarize_policy_winrates(summary, policy_name):
@@ -268,20 +360,38 @@ def evaluate_checkpoint(checkpoint_path: Path, opponent_agent, opponent_module: 
 def main():
     args = parse_args()
     opponent_module = OPPONENT_MODULES[args.opponent]
-    checkpoint_paths = list(iter_checkpoints(args.run_name))
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    checkpoint_paths = list(iter_checkpoints(args.run_name, args.run_kind))
+
+    completed_sweeps = set() if args.force else load_completed_sweeps(output_path)
+    total_checkpoint_count = len(checkpoint_paths)
+    if completed_sweeps:
+        checkpoint_paths = [
+            checkpoint_path
+            for checkpoint_path in checkpoint_paths
+            if sweep_key(checkpoint_path, opponent_module, args.episodes)
+            not in completed_sweeps
+        ]
+        skipped_count = total_checkpoint_count - len(checkpoint_paths)
+    else:
+        skipped_count = 0
 
     if args.limit is not None:
         checkpoint_paths = checkpoint_paths[: args.limit]
 
     if not checkpoint_paths:
-        raise ValueError("No checkpoints matched the requested filters.")
-
-    output_path = Path(args.output)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+        print(
+            "No remaining checkpoints to evaluate. "
+            f"Matched {total_checkpoint_count}; skipped {skipped_count} already-swept records."
+        )
+        return
 
     print(
         f"Evaluating {len(checkpoint_paths)} checkpoints against {opponent_module} "
-        f"for {args.episodes} episodes each."
+        f"for {args.episodes} episodes each. "
+        f"Skipped {skipped_count} already-swept checkpoints."
     )
 
     opponent_agent = soccer_evaluate.load_agent(opponent_module, base_port=args.base_port + 1)

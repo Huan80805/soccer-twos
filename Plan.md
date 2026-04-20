@@ -2,221 +2,197 @@
 
 ## Goal
 
-Build and submit multiple SoccerTwos agents that satisfy the final project rubric:
+Build and submit Soccer-Twos agents that satisfy the final project rubric:
 
 - Modify the reward function or observation space to improve learning.
 - Run controlled experiments against a baseline.
-- Submit trained agents that can beat the Random Agent and, ideally, the Baseline Agent.
-- Include training plots, comparison plots, and a short report explaining what was changed and why it worked.
+- Submit at least one trained agent that wins 9/10 against the Random Agent, and ideally one that also beats the Baseline Agent.
+- Include training curves, win-rate comparisons, and a short report explaining what changed and why.
 
 ## Rubric Checklist
 
-### Code Requirements (100 pts)
+### Code Requirements
 
-- Submission integrity
-  - Implement an agent class that inherits from `soccer_twos.AgentInterface`.
-  - Implement the `act()` method.
-  - Fill in agent metadata in the agent `README.md`.
-  - Package each submitted agent folder as a `.zip`.
-  - Verify each unzipped agent loads without errors.
-- Reward / observation / architecture modification
-  - Add or change the reward function or observation space in source code.
-  - Keep the code syntactically correct and logically consistent.
-  - Optional bonus: add a novel learning idea such as curriculum learning or self-play.
-- Policy performance
-  - Train at least one agent that wins 9/10 against the Random Agent.
-  - Train at least one agent that wins 9/10 against the Baseline Agent.
-  - Optional bonus: beat the competitive agent when it is released.
+- Implement an agent class that inherits from `soccer_twos.AgentInterface`.
+- Implement the `act()` method.
+- Fill in agent metadata in each agent `README.md`.
+- Package each submitted agent folder as a `.zip`.
+- Verify each unzipped agent loads without errors.
+- Include a visible reward, observation, architecture, curriculum, or self-play modification in source code.
 
-### Report Requirements (100 pts)
+### Report Requirements
 
 - 1-2 pages excluding references.
-- Explain the algorithm used, the library used, and the theory behind the method.
-- Include the final hyperparameters for each important run.
-- Include at least one training curve for every submitted or discussed agent.
+- Explain PPO, RLlib, and the training setup.
+- Include final hyperparameters for important runs.
+- Include one training curve for each submitted or discussed agent.
 - Include a direct comparison plot or table across agents.
-- Label all figures clearly with axis names.
-- State whether the modification improved reward, convergence speed, or performance.
-- Give a technical explanation for why the observed results happened.
+- Label all figures clearly.
+- State whether each modification improved learning speed, reward, or external win rate.
+- Explain the observed results technically.
 - Include references.
 
 ## Agent Strategy
 
-We should plan to produce at least 3 named agents so the final submission is easy to map to rubric items:
-
 - `Agent 1: Baseline PPO`
-  - Minimal or no environment modification.
-  - Used as the comparison point.
-- `Agent 2: Reward / Observation Modified PPO`
-  - Main required agent for the modification rubric.
-  - Should be the strongest candidate for beating Random and Baseline.
-- `Agent 3: Bonus or Advanced Agent`
-  - Self-play, curriculum learning, or another novel idea.
-  - Used for bonus credit or additional comparison in the report.
+  - PPO team agent trained against Random.
+  - Main comparison point.
+- `Agent 2: Reward-Shaped PPO`
+  - PPO team agent with ball-progress / defensive-clear reward shaping.
+  - Satisfies the required environment modification.
+- `Agent 3: Advanced Self-Play PPO`
+  - Self-play or historical-opponent self-play.
+  - Used for bonus credit and robustness comparison.
 
-## Current Status - Apr 19
+## Current Status - Apr 20
 
 ### Completed
 
-- Implemented a clean PPO baseline training path in `example_ray_team_vs_random.py`.
-- Implemented reward shaping in `utils.py` through `TeamRewardShapingWrapper`.
-- Current shaping experiment uses:
-  - `reward_shaping = "custom"`
-  - ball progress shaping along x-axis
-  - optional defensive-clear shaping controlled by a separate weight
-- Added reward-shaping custom metrics through `RewardShapingMetricsCallbacks`.
-- Added unshaped evaluation config to training scripts so shaped reward is not the only comparison signal.
-- Trained multiple PPO variants:
-  - baseline team-vs-random PPO
-  - reward-shaped PPO with different progress / clear weights
-- Packaged two RLlib checkpoint-backed agents:
+- Implemented baseline PPO training against Random in `example_ray_team_vs_random.py`.
+- Implemented reward shaping in `utils.py`:
+  - `TeamRewardShapingWrapper` for `EnvType.team_vs_policy`
+  - `MultiagentTeamRewardShapingWrapper` for symmetric `EnvType.multiagent_team`
+  - `RewardShapingMetricsCallbacks` for TensorBoard custom metrics
+- Trained and swept multiple team-vs-random variants:
+  - baseline PPO
+  - ball-progress reward shaping
+  - ball-progress plus defensive-clear shaping
+- Packaged checkpoint-backed agents:
   - `baseline_ppo_agent`
   - `reward_shaping_ppo_agent`
-- Added `sweep_checkpoint_winrates.py` to evaluate all saved checkpoints against:
-  - Random Agent
-  - CEIA Baseline Agent
-- Confirmed that final checkpoint selection should use external win rate, not shaped training reward.
+- Added checkpoint sweeping under `evaluation/sweep_checkpoint_winrates.py`.
+- Added plotting under `evaluation/plot_selfplay_winrates.py`.
+- Moved evaluation artifacts under `evaluation/`.
+- plotting should use `~/.venv/hml/bin/python`, not the Soccer-Twos RL env, to avoid upgrading NumPy inside the old Ray/RLlib environment.
 
-### Key Lessons
+### Observations
 
-- Shaped training reward is not comparable to baseline training reward.
-- For final model selection, use direct win rate from `soccer_twos.evaluate`.
-- The current reward shaping wrapper is valid for `team_vs_policy`, but not for `multiagent_team`.
-- In `multiagent_team`, blue and orange attack opposite directions, so any progress-based reward must be symmetric:
-  - blue progress: `+delta_x`
-  - orange progress: `-delta_x`
-- Current PPO variants were trained against the Random Agent, so poor performance against CEIA is not surprising.
+- Team-vs-random reward shaping reached strong Random win rates but did not transfer well to CEIA.
+- Shared-policy self-play improved over pure self-play baseline when reward shaping was enabled, but still remained weak against CEIA.
+- Self-play TensorBoard losses are not reliable model-selection metrics.
+- `vf_explained_var` looked healthy enough; rising `vf_loss` likely reflects higher return scale / variance rather than immediate critic failure.
+- `cur_kl_coeff` rose early in self-play runs, suggesting PPO updates were too aggressive under default `lr=5e-5`, `num_sgd_iter=30`.
+- The next promising direction is historical-opponent self-play:
+  - train `current_team`
+  - freeze and sample older checkpoints into `opponent_team`
+  - randomize whether the current policy plays blue or orange
+  - optionally keep reward shaping enabled
 
 ### Current Risks
 
-- Existing reward-shaped checkpoint in `reward_shaping_ppo_agent` was hand-selected from a late checkpoint, not necessarily the best external win-rate checkpoint.
-- Existing reward shaping does not apply correctly to `multiagent_team`; do not use it there unchanged.
+- Current packaged agents may not point to the best external-win-rate checkpoints yet.
+- CEIA win rate is still far below the 9/10 target.
+- Checkpoint folders are ignored by git; final agent zips must include the required checkpoint files separately.
+- Old Ray/RLlib requires an older NumPy; do not install plotting dependencies into the `soccertwos` conda env.
 
-### Week of Apr 19 - Checkpoint Selection and Optional Self-Play
+## TODOs And Deliverables
 
-**Main objective:** choose the strongest existing checkpoint and decide whether one more training run is worth the time.
+### Training And Experiments
 
-**TODOs**
+- Run low-update-pressure self-play experiments:
+  - `lr=2.5e-5`
+  - `num_sgd_iter=10` or `5`
+  - keep `train_batch_size=4000` initially to isolate update-pressure effects
+- Implement historical-opponent self-play as the next major experiment:
+  - two policies: `current_team`, `opponent_team`
+  - train only `current_team`
+  - periodically save `current_team` weights
+  - sample frozen historical opponents into `opponent_team`
+  - randomize current/opponent side assignment
+- Decide whether to run historical self-play with:
+  - no shaping
+  - progress-only shaping
+  - progress plus defensive-clear shaping
+- Optional if time allows:
+  - test `vf_share_layers=False`
+  - test a medium model such as `[512, 256, 128]`
+  - test lower shaping weights if CEIA transfer remains poor
 
-- Summarize sweep results:
-  - best baseline checkpoint vs Random
-  - best reward-shaped checkpoint vs Random
-  - best baseline checkpoint vs CEIA
-  - best reward-shaped checkpoint vs CEIA
-- Compare side-specific performance:
-  - blue win rate
-  - orange win rate
-  - overall win rate
-- Update `baseline_ppo_agent` and `reward_shaping_ppo_agent` to point to the selected checkpoints.
-- Verify packaged agents with:
-  - `python -m soccer_twos.watch -m1 baseline_ppo_agent -m2 example_player_agent`
-  - `python -m soccer_twos.watch -m1 reward_shaping_ppo_agent -m2 example_player_agent`
-  - `python -m soccer_twos.evaluate -m1 reward_shaping_ppo_agent -m2 example_player_agent -e 10`
-  - `python -m soccer_twos.evaluate -m1 reward_shaping_ppo_agent -m2 ceia_baseline_agent -e 10`
-- If current agents do not meet target performance, run one advanced experiment:
-  - start with unshaped `multiagent_team` shared-policy PPO
-  - only add symmetric reward shaping if the unshaped run is not competitive
-- Write a short technical note explaining:
-  - why random-opponent PPO may not transfer to CEIA
-  - why shaped reward is not used as final checkpoint-selection metric
-  - why multiagent-team self-play is the next logical experiment
+### Evaluation
 
-**Deliverables by Apr 19**
+- Re-run checkpoint sweeps for any new experiments:
+  - against Random
+  - against CEIA
+- Generate plots for:
+  - team-vs-random PPO variants
+  - self-play variants
+  - tuned self-play variants if available
+  - historical-opponent self-play if implemented
+- Select checkpoints by external win rate:
+  - primary: Random 9/10 requirement
+  - secondary: CEIA/Baseline robustness
+  - tertiary: side balance between blue and orange
+- Update packaged agents to point to selected checkpoints.
 
-- Best-checkpoint table from JSONL sweeps.
-- Final selected checkpoint for each packaged agent.
-- Decision on whether to run multiagent-team self-play.
+### Packaging
 
-### Week of Apr 23 - Finalization, Packaging, and Report
-
-**Main objective:** lock down the final submission package and make sure every rubric item is covered.
-
-**TODOs**
-
-- Select the final submitted agents and map each one to a rubric purpose.
-- Run final evaluations:
-  - final agent vs Random Agent
-  - final agent vs Baseline Agent
-  - bonus agent vs strong opponent if available
-- Verify the final packaged agents load correctly with `soccer_twos.watch` or evaluation tools.
+- Verify packaged agents with `soccer_twos.evaluate`.
 - Fill in each agent `README.md` with:
   - agent name
   - authors
   - emails
   - short description
-- Zip each agent folder exactly as required for submission.
-- Finalize figures:
-  - one training curve per submitted/discussed agent
-  - one direct comparison figure or table
-  - clearly labeled axes
-- Write the final 1-2 page report with:
-  - algorithm and library used
-  - theory background
-  - exact modification made
-  - motivation / hypothesis
-  - hyperparameter table
-  - results and comparison
-  - technical discussion of why the results happened
-  - references
-- Do one final rubric audit before submission.
+  - checkpoint/source experiment
+- Zip final agent folders.
+- Confirm zipped agents load after extraction.
 
-**Deliverables by Apr 23**
+### Report
 
-- Final agent folders with `AgentInterface` implementations.
-- Final zipped submission packages.
-- Final evaluation numbers.
-- Final report PDF or document draft ready for submission.
+- Add training-curve figures from TensorBoard.
+- Add external win-rate comparison tables/plots from JSONL sweeps.
+- Explain reward shaping:
+  - ball progress
+  - defensive clear
+  - symmetric self-play shaping
+- Explain why shaped reward is not used to select final checkpoints.
+- Explain why Random-trained policies transfer poorly to CEIA.
+- If implemented, explain historical-opponent self-play as the advanced method.
 
-**Success criteria**
+### Deliverables
 
-- Every submitted agent loads without errors.
-- The report directly answers every report rubric category.
-- The final package is organized enough that the TA can tell which agent satisfies which requirement.
-
-## Submission Checklist
-
-- `AgentInterface` subclass implemented: done for packaged PPO agents.
-- `act()` implemented: done.
-- Reward or observation modification visible in source code: done in `utils.py`.
-- Training curves saved for every submitted or discussed agent: needs final plot export.
-- Comparison plot or table created: needs JSONL summarization.
-- Final evaluation vs Random completed: in progress.
-- Final evaluation vs Baseline completed: in progress.
-- Agent `README.md` files completed: needs author/email update.
-- Agent folders zipped: not done.
-- Report limited to 1-2 pages excluding references: not done.
-- Report includes algorithm, theory, hyperparameters, modification, results, analysis, and references: not done.
+- Final selected checkpoint table.
+- Final Random and CEIA evaluation numbers.
+- Final agent folders and zips.
+- Final 1-2 page report.
+- Clean git commit with code, evaluation scripts, plots/tables, and plan/report materials.
 
 ## Useful Commands
 
 ```bash
-# Training
+# RL training: use the Soccer-Twos conda env
 python example_ray_team_vs_random.py
-python exp_reward_shaping.py
+python exp_reward_shaping.py --mode team_vs_random --port 55000
+python exp_reward_shaping.py --mode selfplay --port 50000
 python example_ray_ma_teams.py
 
 # Evaluation
-python -m soccer_twos.evaluate -m1 baseline_ppo_agent -m2 example_player_agent -e 10
-python -m soccer_twos.evaluate -m1 reward_shaping_ppo_agent -m2 example_player_agent -e 10
-python -m soccer_twos.evaluate -m1 reward_shaping_ppo_agent -m2 ceia_baseline_agent -e 10
+python -m soccer_twos.evaluate -m1 reward_shaping_ppo_agent -m2 example_player_agent -e 50
+python -m soccer_twos.evaluate -m1 reward_shaping_ppo_agent -m2 ceia_baseline_agent -e 50
 
-# Checkpoint sweep
-python sweep_checkpoint_winrates.py --opponent random --episodes 10 --output random_eval.jsonl
-python sweep_checkpoint_winrates.py --opponent ceia --episodes 10 --output ceia_eval.jsonl
+# Checkpoint sweeps
+python evaluation/sweep_checkpoint_winrates.py --opponent random --episodes 50 --output random_eval.jsonl
+python evaluation/sweep_checkpoint_winrates.py --opponent ceia --episodes 50 --output ceia_eval.jsonl
+
+# Plotting: use the plotting venv, not the RL env
+~/.venv/hml/bin/python evaluation/plot_selfplay_winrates.py --suite selfplay
+~/.venv/hml/bin/python evaluation/plot_selfplay_winrates.py --suite team
+~/.venv/hml/bin/python evaluation/plot_selfplay_winrates.py --suite selfplay_tuned
 
 # Visual inspection
-python -m soccer_twos.watch -m1 reward_shaping_ppo_agent -m2 example_player_agent
+/nethome/tyang416/miniconda3/envs/soccertwos/bin/python -m soccer_twos.watch -m1 reward_shaping_ppo_agent -m2 example_player_agent
 ```
 
 ## Important Files
 
-- `utils.py` - environment helpers, reward shaping wrapper, custom metrics
+- `utils.py` - environment helpers, reward shaping wrappers, custom metrics
 - `example_ray_team_vs_random.py` - baseline PPO training against Random
-- `exp_reward_shaping.py` - reward-shaped PPO training against Random
-- `example_ray_ma_teams.py` - shared-policy multiagent-team training entry point
-- `sweep_checkpoint_winrates.py` - checkpoint evaluation against Random / CEIA
+- `exp_reward_shaping.py` - unified reward-shaped PPO training entrypoint
+- `exp_selfplay_reward_shaping.py` - compatibility wrapper for self-play reward shaping
+- `example_ray_ma_teams.py` - shared-policy multiagent-team baseline self-play
+- `evaluation/sweep_checkpoint_winrates.py` - checkpoint evaluation against Random / CEIA
+- `evaluation/plot_selfplay_winrates.py` - plotting for checkpoint win-rate sweeps
+- `evaluation/random_eval.jsonl` / `evaluation/ceia_eval.jsonl` - checkpoint sweep outputs
+- `evaluation/plots/` - generated comparison plots and best-checkpoint CSVs
 - `baseline_ppo_agent/` - packaged baseline PPO candidate
 - `reward_shaping_ppo_agent/` - packaged reward-shaped PPO candidate
-- `curriculum.yaml` - curriculum configuration
-- `ray_results/` - checkpoints, logs, and training outputs
-- `random_eval.jsonl` / `ceia_eval.jsonl` - checkpoint sweep outputs
+- `ray_results/` - local checkpoints, logs, and training outputs
