@@ -1,13 +1,17 @@
 from ray import tune
 from soccer_twos import EnvType
 
-from utils import create_rllib_env, init_ray
+from utils import create_rllib_env, init_ray, RewardShapingMetricsCallbacks
 
 
 NUM_ENVS_PER_WORKER = 5
 NUM_WORKERS = 8
 BASE_PORT = 55000
 TRAIN_BATCH_SIZE = 4000
+BALL_PROGRESS_WEIGHT = 0.05
+DEFENSIVE_CLEAR_WEIGHT = 0.0
+DEFENSIVE_HALF_THRESHOLD = -4.0
+
 if __name__ == "__main__":
     init_ray()
 
@@ -15,7 +19,7 @@ if __name__ == "__main__":
 
     analysis = tune.run(
         "PPO",
-        name="PPO_baseline_team_vs_random",
+        name="PPO_reward_exp_prog005_clear0",
         config={
             # system settings
             "num_gpus": 0,
@@ -30,12 +34,17 @@ if __name__ == "__main__":
                 "base_port": BASE_PORT,
                 "variation": EnvType.team_vs_policy,
                 "multiagent": False,
+                "reward_shaping": "custom",
+                "ball_progress_weight": BALL_PROGRESS_WEIGHT,
+                "defensive_clear_weight": DEFENSIVE_CLEAR_WEIGHT,
+                "defensive_half_threshold": DEFENSIVE_HALF_THRESHOLD,
             },
             "model": {
                 "vf_share_layers": True,
                 "fcnet_hiddens": [256, 256],
             },
             "train_batch_size": TRAIN_BATCH_SIZE,
+            "callbacks": RewardShapingMetricsCallbacks,
             "evaluation_interval": 50,
             "evaluation_num_workers": 1,
             "evaluation_num_episodes": 10,
@@ -51,12 +60,10 @@ if __name__ == "__main__":
         },
         stop={
             "timesteps_total": 5000000,  # 5M
-            # "time_total_s": 14400, # 4h
         },
         checkpoint_freq=100,
         checkpoint_at_end=True,
         local_dir="./ray_results",
-        # restore="./ray_results/PPO_selfplay_1/PPO_Soccer_ID/checkpoint_00X/checkpoint-X",
     )
 
     best_trial = analysis.get_best_trial("episode_reward_mean", mode="max")

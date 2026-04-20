@@ -1,0 +1,34 @@
+{
+  "env": "Soccer",
+  "env_config": {
+    "base_port": 55000,
+    "multiagent": false,
+    "num_envs_per_worker": 5,
+    "variation": "EnvType.team_vs_policy"
+  },
+  "evaluation_config": {
+    "env_config": {
+      "base_port": 55000,
+      "multiagent": false,
+      "num_envs_per_worker": 5,
+      "variation": "EnvType.team_vs_policy"
+    },
+    "explore": false
+  },
+  "evaluation_interval": 50,
+  "evaluation_num_episodes": 10,
+  "evaluation_num_workers": 1,
+  "framework": "torch",
+  "log_level": "INFO",
+  "model": {
+    "fcnet_hiddens": [
+      256,
+      256
+    ],
+    "vf_share_layers": true
+  },
+  "num_envs_per_worker": 5,
+  "num_gpus": 0,
+  "num_workers": 8,
+  "train_batch_size": 4000
+}
