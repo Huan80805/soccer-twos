@@ -44,6 +44,9 @@ def get_agent_kind(run_name):
     elif run_name.startswith("PPO_selfplay_reward"):
         # PPO self-play trained team agent with reward shaping
         return "selfplay_ppo_reward"
+    elif run_name.startswith("PPO_historical_selfplay"):
+        # PPO trained against sampled frozen historical self-play opponents
+        return "historical_selfplay"
     raise ValueError(f"Unrecognized run name: {run_name}")
 
 
@@ -167,6 +170,10 @@ class CheckpointTeamPPOAgent:
         the explicit policy id `default`.
         """
 
+        policy = self.agent.get_policy("current_team")
+        if policy is not None:
+            return policy
+
         policy = self.agent.get_policy("default")
         if policy is not None:
             return policy
@@ -223,8 +230,22 @@ def parse_args():
     parser.add_argument(
         "--run-kind",
         default=None,
-        choices=("ppo_baseline", "ppo_reward_shaping", "selfplay_ppo_baseline", "selfplay_ppo_reward"),
+        choices=(
+            "ppo_baseline",
+            "ppo_reward_shaping",
+            "selfplay_ppo_baseline",
+            "selfplay_ppo_reward",
+            "historical_selfplay",
+        ),
         help="Optional run-kind filter.",
+    )
+    parser.add_argument(
+        "--trial-dir",
+        default=None,
+        help=(
+            "Optional exact trial directory filter. This is useful when multiple "
+            "trials share the same run name."
+        ),
     )
     parser.add_argument(
         "--force",
@@ -234,7 +255,8 @@ def parse_args():
     return parser.parse_args()
 
 
-def iter_checkpoints(run_name_filter=None, run_kind_filter=None):
+def iter_checkpoints(run_name_filter=None, run_kind_filter=None, trial_dir_filter=None):
+    trial_dir_path = Path(trial_dir_filter).resolve() if trial_dir_filter else None
     checkpoint_paths = sorted(
         path
         for path in RAY_RESULTS_DIR.glob("**/checkpoint-*")
@@ -246,6 +268,8 @@ def iter_checkpoints(run_name_filter=None, run_kind_filter=None):
         if run_name_filter and run_name != run_name_filter:
             continue
         if run_kind_filter and get_agent_kind(run_name) not in run_kind_filter:
+            continue
+        if trial_dir_path and checkpoint_path.parents[1].resolve() != trial_dir_path:
             continue
         yield checkpoint_path
 
@@ -363,7 +387,7 @@ def main():
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    checkpoint_paths = list(iter_checkpoints(args.run_name, args.run_kind))
+    checkpoint_paths = list(iter_checkpoints(args.run_name, args.run_kind, args.trial_dir))
 
     completed_sweeps = set() if args.force else load_completed_sweeps(output_path)
     total_checkpoint_count = len(checkpoint_paths)

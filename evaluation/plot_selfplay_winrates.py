@@ -39,6 +39,24 @@ PLOT_SUITES = {
             "PPO_selfplay_reward_prog005_clear01_lr25e6_sgd10": "#1b9e77",
         },
     },
+    "historical": {
+        "title": "Historical-opponent self-play PPO checkpoint win rate",
+        "side_title": "Historical-opponent self-play PPO side-specific win rate",
+        "labels": {
+            "PPO_historical_selfplay_baseline_lr5em05_sgd30": "baseline",
+            "PPO_historical_selfplay_baseline_lr5em05_sgd30_larger_model": "baseline - large",
+            "PPO_historical_selfplay_reward_prog005_clear0_lr5em05_sgd30": "PR",
+            "PPO_historical_selfplay_reward_prog005_clear0_lr2em05_sgd10": "PR + low LR",
+            "PPO_historical_selfplay_reward_prog005_clear0_lr5em05_sgd30_updateInterval50": "PR + longer update"
+        },
+        "colors": {
+            "PPO_historical_selfplay_baseline_lr5em05_sgd30": "#4059ad",
+            "PPO_historical_selfplay_baseline_lr5em05_sgd30_larger_model": "#cfbc53",
+            "PPO_historical_selfplay_reward_prog005_clear0_lr5em05_sgd30": "#1b9e77",
+            "PPO_historical_selfplay_reward_prog005_clear0_lr2em05_sgd10": "#d95f02",
+            "PPO_historical_selfplay_reward_prog005_clear0_lr5em05_sgd30_updateInterval50": "#a270b3"
+        },
+    },
     "team": {
         "title": "Team-vs-random PPO checkpoint win rate",
         "side_title": "Team-vs-random PPO side-specific win rate",

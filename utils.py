@@ -75,6 +75,21 @@ def make_reward_shaping_info(
     }
 
 
+def compute_progress_clear_bonus(
+    team_progress,
+    progress_weight,
+    clear_weight,
+    is_clear,
+):
+    progress_bonus = progress_weight * team_progress
+    clear_bonus = (
+        clear_weight * team_progress
+        if clear_weight > 0.0 and is_clear and team_progress > 0.0
+        else 0.0
+    )
+    return progress_bonus, clear_bonus
+
+
 def attach_team_reward_shaping_info(info, shaping_by_team):
     info = dict(info) if isinstance(info, dict) else {}
     for team_id, shaping in shaping_by_team.items():
@@ -136,26 +151,34 @@ class TeamRewardShapingWrapper(gym.core.Wrapper):
         # additive and easy to disable for baseline comparisons.
         shaped_reward = reward
         current_ball_x = extract_ball_x(info)
+        previous_ball_x = self._previous_ball_x
         progress_bonus = 0.0
         clear_bonus = 0.0
 
-        if current_ball_x is not None and self._previous_ball_x is not None:
-            ball_delta_x = current_ball_x - self._previous_ball_x
+        if current_ball_x is not None and previous_ball_x is not None:
+            ball_delta_x = current_ball_x - previous_ball_x
 
             if self.shaping_mode == "custom":
-                if self.ball_progress_weight > 0.0:
-                    # Dense progress shaping: reward moving the ball toward the
-                    # opponent goal and penalize drift back toward our own goal.
-                    progress_bonus = self.ball_progress_weight * ball_delta_x
-                    shaped_reward += progress_bonus
-                if self.defensive_clear_weight > 0.0 and (
-                    # Only count a "clear" if the ball was previously in our
-                    # defensive half and the new movement sends it outward.
-                    self._previous_ball_x <= self.defensive_half_threshold
-                    and ball_delta_x > 0.0
-                ):
-                    clear_bonus = self.defensive_clear_weight * ball_delta_x
-                    shaped_reward += clear_bonus
+                progress_bonus, clear_bonus = compute_progress_clear_bonus(
+                    team_progress=ball_delta_x,
+                    progress_weight=self.ball_progress_weight,
+                    clear_weight=self.defensive_clear_weight,
+                    is_clear=previous_ball_x <= self.defensive_half_threshold,
+                )
+                shaped_reward += progress_bonus + clear_bonus
+
+                if self.debug and ball_delta_x != 0.0:
+                    print(
+                        "[reward_shaping_debug] "
+                        f"wrapper={id(self)} "
+                        f"prev_ball_x={previous_ball_x:.3f} "
+                        f"ball_x={current_ball_x:.3f} "
+                        f"delta_x={current_ball_x - previous_ball_x:.4f} "
+                        f"base={reward:.4f} "
+                        f"progress_bonus={progress_bonus:.4f} "
+                        f"clear_bonus={clear_bonus:.4f} "
+                        f"shaped={shaped_reward:.4f}"
+                    )
 
         # Update the reference after shaping so the next step uses the current
         # ball location as the new baseline.
@@ -174,15 +197,6 @@ class TeamRewardShapingWrapper(gym.core.Wrapper):
             ball_x=current_ball_x,
         )
 
-        if self.debug and current_ball_x is not None:
-            print(
-                "[reward_shaping_debug] "
-                f"ball_x={current_ball_x:.3f} "
-                f"base={reward:.4f} "
-                f"progress_bonus={progress_bonus:.4f} "
-                f"clear_bonus={clear_bonus:.4f} "
-                f"shaped={shaped_reward:.4f}"
-            )
 
         if is_episode_done(done):
             # Avoid carrying ball state across episode boundaries.
@@ -238,6 +252,7 @@ class MultiagentTeamRewardShapingWrapper(gym.core.Wrapper):
 
         shaped_reward = dict(reward)
         current_ball_x = extract_ball_x(info)
+        previous_ball_x = self._previous_ball_x
         shaping_by_team = {
             self.BLUE_TEAM_ID: make_reward_shaping_info(
                 mode="multiagent_custom",
@@ -257,8 +272,8 @@ class MultiagentTeamRewardShapingWrapper(gym.core.Wrapper):
             ),
         }
 
-        if current_ball_x is not None and self._previous_ball_x is not None:
-            ball_delta_x = current_ball_x - self._previous_ball_x
+        if current_ball_x is not None and previous_ball_x is not None:
+            ball_delta_x = current_ball_x - previous_ball_x
 
             blue_progress = ball_delta_x
             orange_progress = -ball_delta_x
@@ -269,7 +284,7 @@ class MultiagentTeamRewardShapingWrapper(gym.core.Wrapper):
                 self.BLUE_TEAM_ID,
                 blue_progress,
                 is_clear=(
-                    self._previous_ball_x <= self.defensive_half_threshold
+                    previous_ball_x <= self.defensive_half_threshold
                     and ball_delta_x > 0.0
                 ),
             )
@@ -279,23 +294,32 @@ class MultiagentTeamRewardShapingWrapper(gym.core.Wrapper):
                 self.ORANGE_TEAM_ID,
                 orange_progress,
                 is_clear=(
-                    self._previous_ball_x >= -self.defensive_half_threshold
+                    previous_ball_x >= -self.defensive_half_threshold
                     and ball_delta_x < 0.0
                 ),
             )
 
+            if self.debug and ball_delta_x != 0.0:
+                blue_shaping = shaping_by_team[self.BLUE_TEAM_ID]
+                orange_shaping = shaping_by_team[self.ORANGE_TEAM_ID]
+                print(
+                    "[ma_reward_shaping_debug] "
+                    f"wrapper={id(self)} "
+                    f"prev_ball_x={previous_ball_x:.3f} "
+                    f"ball_x={current_ball_x:.3f} "
+                    f"delta_x={current_ball_x - previous_ball_x:.4f} "
+                    f"blue_base={reward.get(self.BLUE_TEAM_ID, 0.0):.4f} "
+                    f"blue_progress={blue_shaping['progress_bonus']:.4f} "
+                    f"blue_clear={blue_shaping['clear_bonus']:.4f} "
+                    f"blue_shaped={shaped_reward.get(self.BLUE_TEAM_ID, 0.0):.4f} "
+                    f"orange_base={reward.get(self.ORANGE_TEAM_ID, 0.0):.4f} "
+                    f"orange_progress={orange_shaping['progress_bonus']:.4f} "
+                    f"orange_clear={orange_shaping['clear_bonus']:.4f} "
+                    f"orange_shaped={shaped_reward.get(self.ORANGE_TEAM_ID, 0.0):.4f}"
+            )
+
         self._previous_ball_x = current_ball_x
         info = attach_team_reward_shaping_info(info, shaping_by_team)
-
-        if self.debug and current_ball_x is not None:
-            print(
-                "[ma_reward_shaping_debug] "
-                f"ball_x={current_ball_x:.3f} "
-                f"blue_base={reward.get(self.BLUE_TEAM_ID, 0.0):.4f} "
-                f"blue_shaped={shaped_reward.get(self.BLUE_TEAM_ID, 0.0):.4f} "
-                f"orange_base={reward.get(self.ORANGE_TEAM_ID, 0.0):.4f} "
-                f"orange_shaped={shaped_reward.get(self.ORANGE_TEAM_ID, 0.0):.4f}"
-            )
 
         if is_episode_done(done):
             self._previous_ball_x = None
@@ -310,11 +334,11 @@ class MultiagentTeamRewardShapingWrapper(gym.core.Wrapper):
         team_progress,
         is_clear,
     ):
-        progress_bonus = self.ball_progress_weight * team_progress
-        clear_bonus = (
-            self.defensive_clear_weight * team_progress
-            if self.defensive_clear_weight > 0.0 and is_clear and team_progress > 0.0
-            else 0.0
+        progress_bonus, clear_bonus = compute_progress_clear_bonus(
+            team_progress=team_progress,
+            progress_weight=self.ball_progress_weight,
+            clear_weight=self.defensive_clear_weight,
+            is_clear=is_clear,
         )
         shaped_reward[team_id] = (
             shaped_reward.get(team_id, 0.0) + progress_bonus + clear_bonus
