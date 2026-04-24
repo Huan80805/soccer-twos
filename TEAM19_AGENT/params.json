@@ -1,0 +1,37 @@
+{
+  "batch_mode": "complete_episodes",
+  "callbacks": "<class '__main__.CurriculumSelfPlayCallback'>",
+  "clip_param": 0.2,
+  "entropy_coeff": 0.003,
+  "env": "Soccer",
+  "env_config": {
+    "base_port": 7005,
+    "flatten_branched": true,
+    "multiagent": false,
+    "num_envs_per_worker": 2,
+    "opponent_policy": "<function <lambda> at 0x1554a23db550>",
+    "single_player": true,
+    "variation": "EnvType.team_vs_policy"
+  },
+  "framework": "torch",
+  "gamma": 0.99,
+  "grad_clip": 0.5,
+  "lambda": 0.95,
+  "log_level": "INFO",
+  "lr": 0.0001,
+  "model": {
+    "fcnet_hiddens": [
+      256,
+      256
+    ],
+    "vf_share_layers": true
+  },
+  "num_envs_per_worker": 2,
+  "num_gpus": 0,
+  "num_sgd_iter": 6,
+  "num_workers": 4,
+  "rollout_fragment_length": 500,
+  "sgd_minibatch_size": 1024,
+  "train_batch_size": 8000,
+  "vf_loss_coeff": 1.0
+}

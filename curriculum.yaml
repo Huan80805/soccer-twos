@@ -1,96 +1,374 @@
 tasks:
-  - name: "Very Easy Goal"
+  - name: "close_finish_static"
     config_fn: none
+    min_iterations: 10
+    advance_threshold: 0.20
     ranges:
       ball:
         position:
-          x: [12, 14]
-          y: [-4.5, 4.5]
-      players:
-        0:
-          rotation_y: [140, 40]
-          position:
-            x: [7, 11]
-            y: [-5, 5]
-  - name: "Easy Goal"
-    config_fn: none
-    ranges:
-      ball:
-        position:
-          x: [7, 14]
-          y: [-4.5, 4.5]
+          x: [9.0, 12.5]
+          y: [-1.5, 1.5]
         velocity:
-          x: [0, 10]
-          y: [-10, 10]
+          x: [0.0, 0.0]
+          y: [0.0, 0.0]
       players:
         0:
-          rotation_y: [0, 360]
           position:
-            x: [7, 14]
-            y: [-5, 5]
-  - name: "Medium Goal"
-    config_fn: none
-    ranges:
-      ball:
-        position:
-          x: [0, 14]
-          y: [-5, 5]
-        velocity:
-          x: [-10, 10]
-          y: [-10, 10]
-      players:
-        0:
-          rotation_y: [0, 360]
-          position:
-            x: [-7, 14]
-            y: [-5, 5]
-  - name: "Hard Goal"
-    config_fn: none
-    ranges:
-      ball:
-        position:
-          x: [-10, 14]
-          y: [-5, 5]
-        velocity:
-          x: [-10, 10]
-          y: [-10, 10]
-      players:
-        0:
-          rotation_y: [0, 360]
-          position:
-            x: [-14, 14]
-            y: [-5, 5]
-  - name: "Random Players"
-    config_fn: random_players
-    ranges:
-      ball:
-        position:
-          x: [-10, 14]
-          y: [-5, 5]
-        velocity:
-          x: [-10, 10]
-          y: [-10, 10]
-      players:
-        0:
-          rotation_y: [0, 360]
-          position:
-            x: [-14, 14]
-            y: [-5, 5]
+            x: [4.0, 6.5]
+            y: [-1.5, 0.0]
+          rotation_y: [-10.0, 20.0]
         1:
-          rotation_y: [0, 360]
           position:
-            x: [-14, 14]
-            y: [-5, 5]
-          velocity:
-            x: [-10, 10]
-            y: [-10, 10]
+            x: [4.0, 6.5]
+            y: [0.0, 1.5]
+          rotation_y: [-10.0, 20.0]
         2:
-          rotation_y: [0, 360]
           position:
-            x: [-14, 14]
-            y: [-5, 5]
+            x: [12.0, 14.0]
+            y: [-3.0, -1.0]
+          rotation_y: [160.0, 220.0]
         3:
-          rotation_y: [0, 360]
           position:
-            x: [-14, 14]
-            y: [-5, 5]
+            x: [12.0, 14.0]
+            y: [1.0, 3.0]
+          rotation_y: [160.0, 220.0]
+
+  - name: "easy_attack_static"
+    config_fn: none
+    min_iterations: 12
+    advance_threshold: 0.35
+    ranges:
+      ball:
+        position:
+          x: [5.0, 10.0]
+          y: [-2.5, 2.5]
+        velocity:
+          x: [0.0, 0.0]
+          y: [0.0, 0.0]
+      players:
+        0:
+          position:
+            x: [0.0, 4.0]
+            y: [-2.5, 0.0]
+          rotation_y: [-20.0, 30.0]
+        1:
+          position:
+            x: [0.0, 4.0]
+            y: [0.0, 2.5]
+          rotation_y: [-20.0, 30.0]
+        2:
+          position:
+            x: [10.0, 14.0]
+            y: [-3.0, -0.5]
+          rotation_y: [150.0, 210.0]
+        3:
+          position:
+            x: [10.0, 14.0]
+            y: [0.5, 3.0]
+          rotation_y: [150.0, 210.0]
+
+  - name: "moving_ball_static"
+    config_fn: none
+    min_iterations: 14
+    advance_threshold: 0.50
+    ranges:
+      ball:
+        position:
+          x: [2.0, 9.0]
+          y: [-3.5, 3.5]
+        velocity:
+          x: [-0.8, 0.8]
+          y: [-0.8, 0.8]
+      players:
+        0:
+          position:
+            x: [-3.0, 2.0]
+            y: [-3.0, 0.0]
+          rotation_y: [-35.0, 35.0]
+        1:
+          position:
+            x: [-3.0, 2.0]
+            y: [0.0, 3.0]
+          rotation_y: [-35.0, 35.0]
+        2:
+          position:
+            x: [8.0, 13.5]
+            y: [-3.5, -0.5]
+          rotation_y: [145.0, 215.0]
+        3:
+          position:
+            x: [8.0, 13.5]
+            y: [0.5, 3.5]
+          rotation_y: [145.0, 215.0]
+
+  - name: "recovery_static"
+    config_fn: none
+    min_iterations: 16
+    advance_threshold: 0.62
+    ranges:
+      ball:
+        position:
+          x: [-1.0, 8.0]
+          y: [-4.5, 4.5]
+        velocity:
+          x: [-1.2, 1.2]
+          y: [-1.2, 1.2]
+      players:
+        0:
+          position:
+            x: [-8.0, -2.0]
+            y: [-4.0, 0.0]
+          rotation_y: [100.0, 240.0]
+        1:
+          position:
+            x: [-8.0, -2.0]
+            y: [0.0, 4.0]
+          rotation_y: [100.0, 240.0]
+        2:
+          position:
+            x: [4.0, 11.0]
+            y: [-4.0, -0.5]
+          rotation_y: [140.0, 220.0]
+        3:
+          position:
+            x: [4.0, 11.0]
+            y: [0.5, 4.0]
+          rotation_y: [140.0, 220.0]
+
+  - name: "narrow_random_opponent"
+    config_fn: random_players
+    min_iterations: 18
+    advance_threshold: 0.45
+    ranges:
+      ball:
+        position:
+          x: [-1.0, 7.0]
+          y: [-2.5, 2.5]
+        velocity:
+          x: [-1.2, 1.2]
+          y: [-1.2, 1.2]
+      players:
+        0:
+          position:
+            x: [-8.0, 1.0]
+            y: [-2.5, 0.0]
+          rotation_y: [-50.0, 50.0]
+        1:
+          position:
+            x: [-8.0, 1.0]
+            y: [0.0, 2.5]
+          rotation_y: [-50.0, 50.0]
+        2:
+          position:
+            x: [4.0, 11.0]
+            y: [-2.5, 0.0]
+          rotation_y: [130.0, 230.0]
+        3:
+          position:
+            x: [4.0, 11.0]
+            y: [0.0, 2.5]
+          rotation_y: [130.0, 230.0]
+
+  - name: "medium_random_opponent"
+    config_fn: random_players
+    min_iterations: 20
+    advance_threshold: 0.55
+    ranges:
+      ball:
+        position:
+          x: [-5.0, 9.0]
+          y: [-4.5, 4.5]
+        velocity:
+          x: [-1.6, 1.6]
+          y: [-1.6, 1.6]
+      players:
+        0:
+          position:
+            x: [-10.0, 2.0]
+            y: [-4.0, 0.0]
+          rotation_y: [-100.0, 100.0]
+        1:
+          position:
+            x: [-10.0, 2.0]
+            y: [0.0, 4.0]
+          rotation_y: [-100.0, 100.0]
+        2:
+          position:
+            x: [2.0, 12.0]
+            y: [-4.0, 0.0]
+          rotation_y: [80.0, 280.0]
+        3:
+          position:
+            x: [2.0, 12.0]
+            y: [0.0, 4.0]
+          rotation_y: [80.0, 280.0]
+
+  - name: "wide_random_opponent"
+    config_fn: random_players
+    min_iterations: 22
+    advance_threshold: 0.65
+    ranges:
+      ball:
+        position:
+          x: [-8.0, 10.0]
+          y: [-5.5, 5.5]
+        velocity:
+          x: [-2.0, 2.0]
+          y: [-2.0, 2.0]
+      players:
+        0:
+          position:
+            x: [-12.0, 3.0]
+            y: [-5.0, 0.0]
+          rotation_y: [-140.0, 140.0]
+        1:
+          position:
+            x: [-12.0, 3.0]
+            y: [0.0, 5.0]
+          rotation_y: [-140.0, 140.0]
+        2:
+          position:
+            x: [0.0, 13.0]
+            y: [-5.0, 0.0]
+          rotation_y: [40.0, 320.0]
+        3:
+          position:
+            x: [0.0, 13.0]
+            y: [0.0, 5.0]
+          rotation_y: [40.0, 320.0]
+
+  - name: "fullfield_random_opponent"
+    config_fn: random_players
+    min_iterations: 24
+    advance_threshold: 0.72
+    ranges:
+      ball:
+        position:
+          x: [-10.0, 12.0]
+          y: [-6.0, 6.0]
+        velocity:
+          x: [-2.3, 2.3]
+          y: [-2.3, 2.3]
+      players:
+        0:
+          position:
+            x: [-13.0, 4.0]
+            y: [-5.0, 0.0]
+          rotation_y: [-170.0, 170.0]
+        1:
+          position:
+            x: [-13.0, 4.0]
+            y: [0.0, 5.0]
+          rotation_y: [-170.0, 170.0]
+        2:
+          position:
+            x: [-1.0, 14.0]
+            y: [-5.0, 0.0]
+          rotation_y: [0.0, 360.0]
+        3:
+          position:
+            x: [-1.0, 14.0]
+            y: [0.0, 5.0]
+          rotation_y: [0.0, 360.0]
+
+  - name: "hard_random_opponent"
+    config_fn: random_players
+    min_iterations: 28
+    advance_threshold: 0.80
+    ranges:
+      ball:
+        position:
+          x: [-12.0, 12.0]
+          y: [-6.2, 6.2]
+        velocity:
+          x: [-2.6, 2.6]
+          y: [-2.6, 2.6]
+      players:
+        0:
+          position:
+            x: [-14.0, 4.5]
+            y: [-5.5, 0.0]
+          rotation_y: [0.0, 360.0]
+        1:
+          position:
+            x: [-14.0, 4.5]
+            y: [0.0, 5.5]
+          rotation_y: [0.0, 360.0]
+        2:
+          position:
+            x: [-3.0, 14.0]
+            y: [-5.5, 0.0]
+          rotation_y: [0.0, 360.0]
+        3:
+          position:
+            x: [-3.0, 14.0]
+            y: [0.0, 5.5]
+          rotation_y: [0.0, 360.0]
+
+  - name: "hard_self_play"
+    config_fn: self_play
+    min_iterations: 32
+    advance_threshold: 0.90
+    ranges:
+      ball:
+        position:
+          x: [-12.0, 12.0]
+          y: [-6.2, 6.2]
+        velocity:
+          x: [-2.6, 2.6]
+          y: [-2.6, 2.6]
+      players:
+        0:
+          position:
+            x: [-14.0, 4.5]
+            y: [-5.5, 0.0]
+          rotation_y: [0.0, 360.0]
+        1:
+          position:
+            x: [-14.0, 4.5]
+            y: [0.0, 5.5]
+          rotation_y: [0.0, 360.0]
+        2:
+          position:
+            x: [-3.0, 14.0]
+            y: [-5.5, 0.0]
+          rotation_y: [0.0, 360.0]
+        3:
+          position:
+            x: [-3.0, 14.0]
+            y: [0.0, 5.5]
+          rotation_y: [0.0, 360.0]
+
+  - name: "fullfield_self_play"
+    config_fn: self_play
+    min_iterations: 40
+    advance_threshold: 1.00
+    ranges:
+      ball:
+        position:
+          x: [-12.0, 12.0]
+          y: [-6.2, 6.2]
+        velocity:
+          x: [-2.8, 2.8]
+          y: [-2.8, 2.8]
+      players:
+        0:
+          position:
+            x: [-14.0, 4.5]
+            y: [-5.5, 0.0]
+          rotation_y: [0.0, 360.0]
+        1:
+          position:
+            x: [-14.0, 4.5]
+            y: [0.0, 5.5]
+          rotation_y: [0.0, 360.0]
+        2:
+          position:
+            x: [-3.0, 14.0]
+            y: [-5.5, 0.0]
+          rotation_y: [0.0, 360.0]
+        3:
+          position:
+            x: [-3.0, 14.0]
+            y: [0.0, 5.5]
+          rotation_y: [0.0, 360.0]
