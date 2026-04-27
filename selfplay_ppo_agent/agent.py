@@ -11,14 +11,17 @@ from soccer_twos import AgentInterface
 
 
 ALGORITHM = "PPO"
-# Copy the chosen checkpoint directory contents into selfplay_ppo_agent/checkpoint/
-# and update the filename below (e.g. "checkpoint-4400").
+# CHECKPOINT_PATH = os.path.join(
+#     os.path.dirname(os.path.abspath(__file__)),
+#     "checkpoint2nd",
+#     "checkpoint-4600",
+# )
+
 CHECKPOINT_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
-    "checkpoint",
-    "checkpoint-4400",
+    "checkpoint3rd",
+    "checkpoint-3400",
 )
-
 
 class DummyEnv(BaseEnv):
     """Minimal env used only while restoring the checkpoint — never stepped."""
@@ -30,8 +33,8 @@ class DummyEnv(BaseEnv):
 
 class SelfPlayPPOAgent(AgentInterface):
     """
-    PPO agent trained with multiagent-team self-play (shared or historical-opponent
-    variant) and packaged for evaluation/submission.
+    PPO agent trained with seeded historical-opponent self-play and packaged for
+    evaluation/submission.
 
     Works with checkpoints that expose either a 'current_team' policy
     (historical-opponent self-play) or a 'default' policy (shared self-play).

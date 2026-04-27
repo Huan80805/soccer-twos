@@ -13,6 +13,24 @@ DEFAULT_CEIA_RESULTS = EVALUATION_DIR / "ceia_eval.jsonl"
 DEFAULT_OUTPUT_DIR = EVALUATION_DIR / "plots"
 RAY_RESULTS_DIR = EVALUATION_DIR.parent / "ray_results"
 
+DEFAULT_RESULTS_BY_SUITE = {
+    "selfplay": {
+        "random": EVALUATION_DIR / "selfplay_random_eval.jsonl",
+        "ceia": EVALUATION_DIR / "selfplay_ceia_eval.jsonl",
+    },
+    "historical": {
+        "ceia": EVALUATION_DIR / "historical_selfplay_ceia_eval.jsonl",
+    },
+    "seeded_historical": {
+        "random": EVALUATION_DIR / "seedrun_random_eval.jsonl",
+        "ceia": EVALUATION_DIR / "seedrun_ceia_eval.jsonl",
+    },
+    "team": {
+        "random": EVALUATION_DIR / "random_random_eval.jsonl",
+        "ceia": EVALUATION_DIR / "random_ceia_eval.jsonl",
+    },
+}
+
 COLORS = ["#A27F5C","#AC693C","#ECB392","#2D5944","#BAC8B1","#043C5C","#047104","#3C9EA4"]
 PLOT_SUITES = {
     "selfplay": {
@@ -55,24 +73,27 @@ PLOT_SUITES = {
                 "title": "Seeded Historical-opponent self-play PPO checkpoint win rate",
         "side_title": "Seeded Historical-opponent self-play PPO side-specific win rate",
         "labels": {
-            "PPO_seeded_historical_selfplay_reward_prog005_clear005_lr2em05_sgd10_runA": "PR, LR 2e-5, CR",
+            "PPO_seeded_historical_selfplay_reward_prog005_clear005_lr2em05_sgd10_runA": "1st iteration",
             # "PPO_seeded_historical_selfplay_reward_prog005_clear0_lr2em05_sgd10_runC": "round2",
             # below conducted with new reward shaping
-            "PPO_seeded_historical_selfplay_reward_goal075_retreat125_scale6_lr2p5em05_sgd10_runD": "round 2 - lr 2.5e-5",
-            "PPO_seeded_historical_selfplay_reward_goal075_retreat125_scale6_lr1em04_sgd6_runE": "round 2 - lr 1e-4",
-            "PPO_seeded_historical_selfplay_reward_goal075_retreat125_scale6_lr5em05_sgd6_runF": "round 2 - lr 5e-5",
-            "PPO_seeded_historical_selfplay_reward_goal075_retreat125_scale6_lr5em05_sgd6_runG": "round 2 - lr 5e-5 + longer opponent update interval",
-            "PPO_seeded_historical_selfplay_reward_goal200_retreat250_scale6_lr5em05_sgd6_runH": "round 2 - lr 5e-5 + longer opponent update + larger reward"   
+            "PPO_seeded_historical_selfplay_reward_goal075_retreat125_scale6_lr2p5em05_sgd10_runD": "2nd iteration",
+            # "PPO_seeded_historical_selfplay_reward_goal075_retreat125_scale6_lr1em04_sgd6_runE": "2nd iteration LR 1e-4",
+            # "PPO_seeded_historical_selfplay_reward_goal075_retreat125_scale6_lr5em05_sgd6_runF": "2nd iteration",
+            "PPO_seeded_historical_selfplay_reward_goal075_retreat125_scale6_lr5em05_sgd6_runG": "2nd iteration + slower opponent update",
+            # "PPO_seeded_historical_selfplay_reward_goal200_retreat250_scale6_lr5em05_sgd6_runH": "2nd iteration LR 5e-5 + slower opponent update + larger reward"
+            "PPO_seeded_historical_selfplay_reward_goal075_retreat125_scale6_lr5em05_sgd6_runI": "3rd iteration",
+            "PPO_seeded_historical_selfplay_reward_goal150_retreat200_scale6_lr5em05_sgd6_runJ": "3rd iteration + larger reward",
         },
         "colors": {
             "PPO_seeded_historical_selfplay_reward_prog005_clear005_lr2em05_sgd10_runA": COLORS[1],
             # "PPO_seeded_historical_selfplay_reward_prog005_clear0_lr2em05_sgd10_runC": "#283618",
             "PPO_seeded_historical_selfplay_reward_goal075_retreat125_scale6_lr2p5em05_sgd10_runD": COLORS[2],
-            "PPO_seeded_historical_selfplay_reward_goal075_retreat125_scale6_lr1em04_sgd6_runE": COLORS[3],
-            "PPO_seeded_historical_selfplay_reward_goal075_retreat125_scale6_lr5em05_sgd6_runF": COLORS[4],
+            # "PPO_seeded_historical_selfplay_reward_goal075_retreat125_scale6_lr1em04_sgd6_runE": COLORS[3],
+            # "PPO_seeded_historical_selfplay_reward_goal075_retreat125_scale6_lr5em05_sgd6_runF": COLORS[4],
             "PPO_seeded_historical_selfplay_reward_goal075_retreat125_scale6_lr5em05_sgd6_runG": COLORS[5],
-            "PPO_seeded_historical_selfplay_reward_goal200_retreat250_scale6_lr5em05_sgd6_runH": COLORS[6]
-
+            # "PPO_seeded_historical_selfplay_reward_goal200_retreat250_scale6_lr5em05_sgd6_runH": COLORS[6]
+            "PPO_seeded_historical_selfplay_reward_goal075_retreat125_scale6_lr5em05_sgd6_runI": COLORS[6],
+            "PPO_seeded_historical_selfplay_reward_goal150_retreat200_scale6_lr5em05_sgd6_runJ": COLORS[7]
         },
     },
     "team": {
@@ -106,10 +127,33 @@ def parse_args():
         default="selfplay",
         help="Which experiment family to plot.",
     )
-    parser.add_argument("--random-results", default=DEFAULT_RANDOM_RESULTS)
-    parser.add_argument("--ceia-results", default=DEFAULT_CEIA_RESULTS)
+    parser.add_argument(
+        "--random-results",
+        default=None,
+        help=f"Random-opponent results JSONL. Defaults to the selected suite's results file if known, otherwise {DEFAULT_RANDOM_RESULTS}.",
+    )
+    parser.add_argument(
+        "--ceia-results",
+        default=None,
+        help=f"CEIA-opponent results JSONL. Defaults to the selected suite's results file if known, otherwise {DEFAULT_CEIA_RESULTS}.",
+    )
+    parser.add_argument(
+        "--opponents",
+        choices=("both", "random", "ceia"),
+        default="both",
+        help="Which opponent evaluation results to plot.",
+    )
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     return parser.parse_args()
+
+
+def default_results_path(suite_name, opponent_key):
+    suite_defaults = DEFAULT_RESULTS_BY_SUITE.get(suite_name, {})
+    if opponent_key in suite_defaults:
+        return suite_defaults[opponent_key]
+    if opponent_key == "random":
+        return DEFAULT_RANDOM_RESULTS
+    return DEFAULT_CEIA_RESULTS
 
 
 def load_rows(path, run_labels):
@@ -200,14 +244,23 @@ def write_best_summary(best, output_path):
 
 
 def plot_overall(rows_by_opponent, output_path, run_labels, run_colors, title):
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4), sharey=True)
+    opponent_count = len(rows_by_opponent)
+    fig, axes = plt.subplots(
+        1,
+        opponent_count,
+        figsize=(6 * opponent_count, 4),
+        sharey=True,
+        squeeze=False,
+    )
+    axes = axes[0]
     for axis, (opponent_name, rows_by_run) in zip(axes, rows_by_opponent.items()):
         for run_name, rows in sorted(rows_by_run.items()):
             axis.plot(
                 [row["checkpoint_iteration"] for row in rows],
                 [row["overall"] for row in rows],
                 marker="o",
-                linewidth=2,
+                markersize=4,
+                linewidth=1,
                 color=run_colors[run_name],
                 label=run_labels[run_name],
             )
@@ -217,7 +270,7 @@ def plot_overall(rows_by_opponent, output_path, run_labels, run_colors, title):
         axis.set_ylim(0.0, 1.05)
 
     axes[0].set_ylabel("Overall win rate")
-    axes[1].legend(loc="upper left", fontsize=8)
+    axes[-1].legend(loc="upper left", fontsize=4)
     fig.suptitle(title)
     fig.tight_layout()
     fig.savefig(output_path, dpi=180)
@@ -226,10 +279,11 @@ def plot_overall(rows_by_opponent, output_path, run_labels, run_colors, title):
 
 def plot_side_breakdown(rows_by_opponent, output_path, run_labels, title):
     run_names = list(run_labels)
+    opponent_count = len(rows_by_opponent)
     fig, axes = plt.subplots(
-        2,
+        opponent_count,
         len(run_names),
-        figsize=(4.3 * len(run_names), 7),
+        figsize=(4.3 * len(run_names), 3.5 * opponent_count),
         sharex=False,
         sharey=True,
         squeeze=False,
@@ -270,7 +324,7 @@ def plot_side_breakdown(rows_by_opponent, output_path, run_labels, title):
             if col_idx == 0:
                 axis.set_ylabel("Win rate")
             if row_idx == 0 and col_idx == len(run_names) - 1:
-                axis.legend(loc="upper left", fontsize=8)
+                axis.legend(loc="upper left", fontsize=4)
 
     fig.suptitle(title)
     fig.tight_layout()
@@ -286,10 +340,21 @@ def main():
     run_labels = suite["labels"]
     run_colors = suite["colors"]
 
-    rows_by_opponent = {
-        "Random": load_rows(Path(args.random_results), run_labels),
-        "CEIA": load_rows(Path(args.ceia_results), run_labels),
-    }
+    rows_by_opponent = {}
+    if args.opponents in ("both", "random"):
+        random_results = (
+            Path(args.random_results)
+            if args.random_results
+            else default_results_path(args.suite, "random")
+        )
+        rows_by_opponent["Random"] = load_rows(random_results, run_labels)
+    if args.opponents in ("both", "ceia"):
+        ceia_results = (
+            Path(args.ceia_results)
+            if args.ceia_results
+            else default_results_path(args.suite, "ceia")
+        )
+        rows_by_opponent["CEIA"] = load_rows(ceia_results, run_labels)
 
     plot_overall(
         rows_by_opponent,

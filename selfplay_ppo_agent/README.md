@@ -1,29 +1,11 @@
 # Self-Play PPO Agent
 
 **Agent name:** SelfPlayPPO  
-**Authors:** [Your names]  
-**Emails:** [Your emails]  
-**Description:** PPO team agent trained with historical-opponent self-play and progress reward shaping (ball_progress_weight=0.05). Both players on a team share one policy that observes the concatenated per-player observations.
+**Authors:** Tsung-Huan Yang  
+**Emails:** tyang416@gatech.edu   
+**Description:** PPO team agent trained with seeded historical-opponent self-play and exponential 2D goal-proximity reward shaping. Both players on a team share one policy that observes the concatenated per-player observations. This agent is intended for exploration, the agent for submission is TEAM19_AGENT
 
 ## Source experiment
 
-Run: `PPO_historical_selfplay_reward_prog005_clear0_lr2em05_sgd10`  
-Best checkpoint: iteration 4400 (36 % win rate vs. CEIA baseline in 50-episode sweep)
-
-## Checkpoint packaging
-
-Before zipping this directory, copy two things from the Tune trial into `checkpoint/`:
-
-```
-ray_results/PPO_historical_selfplay_reward_prog005_clear0_lr2em05_sgd10/
-  PPO_Soccer_83b04_00000_0_2026-04-21_14-04-18/
-    params.json                          ← copy here
-    checkpoint_004400/
-      checkpoint-4400                    ← copy here
-      checkpoint-4400.tune_metadata      ← copy here
-```
-
-The `checkpoint/` directory should end up containing:
-- `checkpoint-4400`
-- `checkpoint-4400.tune_metadata`
-- `params.json`
+Run: `PPO_seeded_historical_selfplay_reward_goal075_retreat125_scale6_lr5em05_sgd6_runG`  
+Best checkpoint: iteration 4600 (0.775 win rate vs. CEIA baseline in 40 games; blue 0.75, orange 0.80)
