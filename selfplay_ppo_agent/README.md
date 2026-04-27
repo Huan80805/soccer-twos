@@ -8,4 +8,5 @@
 ## Source experiment
 
 Run: `PPO_seeded_historical_selfplay_reward_goal075_retreat125_scale6_lr5em05_sgd6_runI`  
-Best checkpoint: iteration 3400, 77.5\% win rate against CEIA baseline
+Best checkpoint: iteration 3400, 77.5\% win rate against CEIA baseline  
+Training script is in `jason_workspace` branch, `exp_seeded_historical_selfplay.py`, which includes reward modification, seeding checkpoints, and self-play
