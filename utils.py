@@ -1,5 +1,6 @@
 from random import uniform as randfloat
 import fcntl
+import math
 import os
 import socket
 import sys
@@ -26,68 +27,92 @@ def is_episode_done(done):
     return bool(done)
 
 
-def extract_ball_x(info):
-    """Extract ball x-position from either single-team or multiagent-team info."""
+def extract_ball_position(info):
+    """Extract ball (x, y) position from either single-team or multiagent-team info."""
     if not isinstance(info, dict):
         return None
 
-    player_ball_x = extract_ball_x_from_player_info(info)
-    if player_ball_x is not None:
-        return player_ball_x
+    player_ball_position = extract_ball_position_from_player_info(info)
+    if player_ball_position is not None:
+        return player_ball_position
 
     for team_info in info.values():
         if not isinstance(team_info, dict):
             continue
+        ball_position = extract_ball_position_from_player_info(team_info)
+        if ball_position is not None:
+            return ball_position
         for player_info in team_info.values():
-            player_ball_x = extract_ball_x_from_player_info(player_info)
-            if player_ball_x is not None:
-                return player_ball_x
+            player_ball_position = extract_ball_position_from_player_info(player_info)
+            if player_ball_position is not None:
+                return player_ball_position
     return None
 
 
-def extract_ball_x_from_player_info(player_info):
+def extract_ball_position_from_player_info(player_info):
     if not isinstance(player_info, dict):
         return None
     ball_info = player_info.get("ball_info")
     if not isinstance(ball_info, dict):
         return None
     position = ball_info.get("position")
-    if position is None or len(position) < 1:
+    if position is None or len(position) < 2:
         return None
-    return float(position[0])
+    return float(position[0]), float(position[1])
 
 
 def make_reward_shaping_info(
     mode,
-    progress_bonus,
-    clear_bonus,
+    goal_progress_bonus,
+    retreat_penalty,
     base_reward,
     shaped_reward,
     ball_x,
+    ball_y=None,
+    potential_delta=0.0,
 ):
     return {
         "mode": mode,
-        "progress_bonus": progress_bonus,
-        "clear_bonus": clear_bonus,
+        "goal_progress_bonus": goal_progress_bonus,
+        "retreat_penalty": retreat_penalty,
         "base_reward": base_reward,
         "shaped_reward": shaped_reward,
         "ball_x": ball_x,
+        "ball_y": ball_y,
+        "potential_delta": potential_delta,
     }
 
 
-def compute_progress_clear_bonus(
-    team_progress,
-    progress_weight,
-    clear_weight,
-    is_clear,
+def goal_potential(ball_position, attacking_goal_x, goal_potential_scale):
+    if goal_potential_scale <= 0.0:
+        raise ValueError("goal_potential_scale must be positive.")
+    x, y = ball_position
+    distance_to_goal = math.sqrt((attacking_goal_x - x) ** 2 + y ** 2)
+    return math.exp(-distance_to_goal / goal_potential_scale)
+
+
+def compute_goal_potential_bonus(
+    previous_ball_position,
+    current_ball_position,
+    attacking_goal_x,
+    goal_progress_weight,
+    retreat_penalty_weight,
+    goal_potential_scale,
 ):
-    progress_bonus = progress_weight * team_progress
-    clear_bonus = (
-        clear_weight * team_progress
-        if clear_weight > 0.0 and is_clear and team_progress > 0.0
-        else 0.0
+    previous_potential = goal_potential(
+        previous_ball_position,
+        attacking_goal_x,
+        goal_potential_scale,
     )
-    return progress_bonus, clear_bonus
+    current_potential = goal_potential(
+        current_ball_position,
+        attacking_goal_x,
+        goal_potential_scale,
+    )
+    potential_delta = current_potential - previous_potential
+    if potential_delta >= 0.0:
+        return goal_progress_weight * potential_delta, 0.0, potential_delta
+    return 0.0, retreat_penalty_weight * potential_delta, potential_delta
 
 
 def attach_team_reward_shaping_info(info, shaping_by_team):
@@ -107,12 +132,11 @@ class TeamRewardShapingWrapper(gym.core.Wrapper):
     output of soccer_twos.make(... variation=team_vs_policy, multiagent=False).
 
     A generic "custom" mode is supported so experiments can be controlled by
-    turning individual weights on/off without changing the wrapper logic:
-
-    - set `ball_progress_weight > 0` to reward moving the ball toward the
-      opponent goal along the x-axis
-    - set `defensive_clear_weight > 0` to additionally reward moving the ball
-      out of our defensive half
+    changing weights without changing the wrapper logic. The current custom
+    shaping is based on an exponential 2D ball-to-goal potential. Movement
+    that increases goal proximity receives a bonus; movement that reduces it
+    receives a stronger retreat penalty. The exponential potential makes
+    shaping small in midfield and larger near scoring range.
 
     Important assumption:
     We treat increasing ball x as progress toward the attacking goal for the
@@ -124,24 +148,26 @@ class TeamRewardShapingWrapper(gym.core.Wrapper):
         self,
         env,
         shaping_mode: str,
-        ball_progress_weight: float = 0.05,
-        defensive_clear_weight: float = 0.1,
-        defensive_half_threshold: float = -6.0,
+        goal_progress_weight: float = 0.75,
+        retreat_penalty_weight: float = 1.25,
+        goal_potential_scale: float = 6.0,
+        attacking_goal_x: float = 15.0,
         debug: bool = False,
     ):
         super().__init__(env)
         self.shaping_mode = shaping_mode
-        self.ball_progress_weight = ball_progress_weight
-        self.defensive_clear_weight = defensive_clear_weight
-        self.defensive_half_threshold = defensive_half_threshold
+        self.goal_progress_weight = goal_progress_weight
+        self.retreat_penalty_weight = retreat_penalty_weight
+        self.goal_potential_scale = goal_potential_scale
+        self.attacking_goal_x = attacking_goal_x
         self.debug = debug
-        self._previous_ball_x = None
+        self._previous_ball_position = None
 
     def reset(self, **kwargs):
         obs = self.env.reset(**kwargs)
         # We shape from step-to-step ball movement, so each episode starts with
         # no previous position reference.
-        self._previous_ball_x = None
+        self._previous_ball_position = None
         return obs
 
     def step(self, action):
@@ -150,39 +176,48 @@ class TeamRewardShapingWrapper(gym.core.Wrapper):
         # Start from the environment's original team reward so shaping remains
         # additive and easy to disable for baseline comparisons.
         shaped_reward = reward
-        current_ball_x = extract_ball_x(info)
-        previous_ball_x = self._previous_ball_x
-        progress_bonus = 0.0
-        clear_bonus = 0.0
+        current_ball_position = extract_ball_position(info)
+        previous_ball_position = self._previous_ball_position
+        current_ball_x = (
+            None if current_ball_position is None else current_ball_position[0]
+        )
+        current_ball_y = (
+            None if current_ball_position is None else current_ball_position[1]
+        )
+        goal_progress_bonus = 0.0
+        retreat_penalty = 0.0
+        potential_delta = 0.0
 
-        if current_ball_x is not None and previous_ball_x is not None:
-            ball_delta_x = current_ball_x - previous_ball_x
-
+        if current_ball_position is not None and previous_ball_position is not None:
             if self.shaping_mode == "custom":
-                progress_bonus, clear_bonus = compute_progress_clear_bonus(
-                    team_progress=ball_delta_x,
-                    progress_weight=self.ball_progress_weight,
-                    clear_weight=self.defensive_clear_weight,
-                    is_clear=previous_ball_x <= self.defensive_half_threshold,
+                goal_progress_bonus, retreat_penalty, potential_delta = (
+                    compute_goal_potential_bonus(
+                        previous_ball_position=previous_ball_position,
+                        current_ball_position=current_ball_position,
+                        attacking_goal_x=self.attacking_goal_x,
+                        goal_progress_weight=self.goal_progress_weight,
+                        retreat_penalty_weight=self.retreat_penalty_weight,
+                        goal_potential_scale=self.goal_potential_scale,
+                    )
                 )
-                shaped_reward += progress_bonus + clear_bonus
+                shaped_reward += goal_progress_bonus + retreat_penalty
 
-                if self.debug and ball_delta_x != 0.0:
+                if self.debug and potential_delta != 0.0:
                     print(
                         "[reward_shaping_debug] "
                         f"wrapper={id(self)} "
-                        f"prev_ball_x={previous_ball_x:.3f} "
-                        f"ball_x={current_ball_x:.3f} "
-                        f"delta_x={current_ball_x - previous_ball_x:.4f} "
+                        f"prev_ball=({previous_ball_position[0]:.3f}, {previous_ball_position[1]:.3f}) "
+                        f"ball=({current_ball_position[0]:.3f}, {current_ball_position[1]:.3f}) "
+                        f"potential_delta={potential_delta:.4f} "
                         f"base={reward:.4f} "
-                        f"progress_bonus={progress_bonus:.4f} "
-                        f"clear_bonus={clear_bonus:.4f} "
+                        f"goal_progress_bonus={goal_progress_bonus:.4f} "
+                        f"retreat_penalty={retreat_penalty:.4f} "
                         f"shaped={shaped_reward:.4f}"
                     )
 
         # Update the reference after shaping so the next step uses the current
         # ball location as the new baseline.
-        self._previous_ball_x = current_ball_x
+        self._previous_ball_position = current_ball_position
 
         info = dict(info) if isinstance(info, dict) else {}
         # Expose the decomposition for debugging and later analysis. This makes
@@ -190,17 +225,18 @@ class TeamRewardShapingWrapper(gym.core.Wrapper):
         # coefficient magnitudes are reasonable.
         info["reward_shaping"] = make_reward_shaping_info(
             mode=self.shaping_mode,
-            progress_bonus=progress_bonus,
-            clear_bonus=clear_bonus,
+            goal_progress_bonus=goal_progress_bonus,
+            retreat_penalty=retreat_penalty,
             base_reward=reward,
             shaped_reward=shaped_reward,
             ball_x=current_ball_x,
+            ball_y=current_ball_y,
+            potential_delta=potential_delta,
         )
-
 
         if is_episode_done(done):
             # Avoid carrying ball state across episode boundaries.
-            self._previous_ball_x = None
+            self._previous_ball_position = None
 
         return obs, shaped_reward, done, info
 
@@ -213,9 +249,10 @@ class MultiagentTeamRewardShapingWrapper(gym.core.Wrapper):
     - team 0 controls players 0 and 1, and attacks toward +x
     - team 1 controls players 2 and 3, and attacks toward -x
 
-    The single-team shaping wrapper cannot be reused here because applying
-    `+delta_x` to both teams would reward one side for moving the ball toward
-    its own goal. This wrapper mirrors the shaping signal by team.
+    The single-team shaping wrapper cannot be reused here because each team has
+    a different attacking goal. This wrapper applies the same 2D goal-potential
+    shaping with mirrored goal centers for blue and orange. The exponential
+    potential makes shaping small in midfield and larger near scoring range.
 
     Important assumption:
     The shaping direction is tied to Soccer-Twos' current team orientation:
@@ -230,99 +267,105 @@ class MultiagentTeamRewardShapingWrapper(gym.core.Wrapper):
     def __init__(
         self,
         env,
-        ball_progress_weight: float = 0.05,
-        defensive_clear_weight: float = 0.0,
-        defensive_half_threshold: float = -4.0,
+        goal_progress_weight: float = 0.75,
+        retreat_penalty_weight: float = 1.25,
+        goal_potential_scale: float = 6.0,
+        goal_x: float = 15.0,
         debug: bool = False,
     ):
         super().__init__(env)
-        self.ball_progress_weight = ball_progress_weight
-        self.defensive_clear_weight = defensive_clear_weight
-        self.defensive_half_threshold = defensive_half_threshold
+        self.goal_progress_weight = goal_progress_weight
+        self.retreat_penalty_weight = retreat_penalty_weight
+        self.goal_potential_scale = goal_potential_scale
+        self.goal_x = goal_x
         self.debug = debug
-        self._previous_ball_x = None
+        self._previous_ball_position = None
 
     def reset(self, **kwargs):
         obs = self.env.reset(**kwargs)
-        self._previous_ball_x = None
+        self._previous_ball_position = None
         return obs
 
     def step(self, action):
         obs, reward, done, info = self.env.step(action)
 
         shaped_reward = dict(reward)
-        current_ball_x = extract_ball_x(info)
-        previous_ball_x = self._previous_ball_x
+        current_ball_position = extract_ball_position(info)
+        previous_ball_position = self._previous_ball_position
+        current_ball_x = (
+            None if current_ball_position is None else current_ball_position[0]
+        )
+        current_ball_y = (
+            None if current_ball_position is None else current_ball_position[1]
+        )
         shaping_by_team = {
             self.BLUE_TEAM_ID: make_reward_shaping_info(
                 mode="multiagent_custom",
-                progress_bonus=0.0,
-                clear_bonus=0.0,
+                goal_progress_bonus=0.0,
+                retreat_penalty=0.0,
                 base_reward=reward.get(self.BLUE_TEAM_ID, 0.0),
                 shaped_reward=reward.get(self.BLUE_TEAM_ID, 0.0),
                 ball_x=current_ball_x,
+                ball_y=current_ball_y,
             ),
             self.ORANGE_TEAM_ID: make_reward_shaping_info(
                 mode="multiagent_custom",
-                progress_bonus=0.0,
-                clear_bonus=0.0,
+                goal_progress_bonus=0.0,
+                retreat_penalty=0.0,
                 base_reward=reward.get(self.ORANGE_TEAM_ID, 0.0),
                 shaped_reward=reward.get(self.ORANGE_TEAM_ID, 0.0),
                 ball_x=current_ball_x,
+                ball_y=current_ball_y,
             ),
         }
 
-        if current_ball_x is not None and previous_ball_x is not None:
-            ball_delta_x = current_ball_x - previous_ball_x
-
-            blue_progress = ball_delta_x
-            orange_progress = -ball_delta_x
-
+        if current_ball_position is not None and previous_ball_position is not None:
             self._apply_team_shaping(
                 shaped_reward,
                 shaping_by_team,
                 self.BLUE_TEAM_ID,
-                blue_progress,
-                is_clear=(
-                    previous_ball_x <= self.defensive_half_threshold
-                    and ball_delta_x > 0.0
-                ),
+                previous_ball_position,
+                current_ball_position,
+                attacking_goal_x=self.goal_x,
             )
             self._apply_team_shaping(
                 shaped_reward,
                 shaping_by_team,
                 self.ORANGE_TEAM_ID,
-                orange_progress,
-                is_clear=(
-                    previous_ball_x >= -self.defensive_half_threshold
-                    and ball_delta_x < 0.0
-                ),
+                previous_ball_position,
+                current_ball_position,
+                attacking_goal_x=-self.goal_x,
             )
 
-            if self.debug and ball_delta_x != 0.0:
-                blue_shaping = shaping_by_team[self.BLUE_TEAM_ID]
-                orange_shaping = shaping_by_team[self.ORANGE_TEAM_ID]
+            blue_shaping = shaping_by_team[self.BLUE_TEAM_ID]
+            orange_shaping = shaping_by_team[self.ORANGE_TEAM_ID]
+            if (
+                self.debug
+                and (
+                    blue_shaping["potential_delta"] != 0.0
+                    or orange_shaping["potential_delta"] != 0.0
+                )
+            ):
                 print(
                     "[ma_reward_shaping_debug] "
                     f"wrapper={id(self)} "
-                    f"prev_ball_x={previous_ball_x:.3f} "
-                    f"ball_x={current_ball_x:.3f} "
-                    f"delta_x={current_ball_x - previous_ball_x:.4f} "
+                    f"prev_ball=({previous_ball_position[0]:.3f}, {previous_ball_position[1]:.3f}) "
+                    f"ball=({current_ball_position[0]:.3f}, {current_ball_position[1]:.3f}) "
                     f"blue_base={reward.get(self.BLUE_TEAM_ID, 0.0):.4f} "
-                    f"blue_progress={blue_shaping['progress_bonus']:.4f} "
-                    f"blue_clear={blue_shaping['clear_bonus']:.4f} "
+                    f"blue_goal_progress={blue_shaping['goal_progress_bonus']:.4f} "
+                    f"blue_retreat={blue_shaping['retreat_penalty']:.4f} "
                     f"blue_shaped={shaped_reward.get(self.BLUE_TEAM_ID, 0.0):.4f} "
                     f"orange_base={reward.get(self.ORANGE_TEAM_ID, 0.0):.4f} "
-                    f"orange_progress={orange_shaping['progress_bonus']:.4f} "
-                    f"orange_clear={orange_shaping['clear_bonus']:.4f} "
+                    f"orange_goal_progress={orange_shaping['goal_progress_bonus']:.4f} "
+                    f"orange_retreat={orange_shaping['retreat_penalty']:.4f} "
                     f"orange_shaped={shaped_reward.get(self.ORANGE_TEAM_ID, 0.0):.4f}"
             )
 
-        self._previous_ball_x = current_ball_x
+        self._previous_ball_position = current_ball_position
         info = attach_team_reward_shaping_info(info, shaping_by_team)
 
         if is_episode_done(done):
-            self._previous_ball_x = None
+            self._previous_ball_position = None
 
         return obs, shaped_reward, done, info
 
@@ -331,20 +374,24 @@ class MultiagentTeamRewardShapingWrapper(gym.core.Wrapper):
         shaped_reward,
         shaping_by_team,
         team_id,
-        team_progress,
-        is_clear,
+        previous_ball_position,
+        current_ball_position,
+        attacking_goal_x,
     ):
-        progress_bonus, clear_bonus = compute_progress_clear_bonus(
-            team_progress=team_progress,
-            progress_weight=self.ball_progress_weight,
-            clear_weight=self.defensive_clear_weight,
-            is_clear=is_clear,
+        goal_progress_bonus, retreat_penalty, potential_delta = compute_goal_potential_bonus(
+            previous_ball_position=previous_ball_position,
+            current_ball_position=current_ball_position,
+            attacking_goal_x=attacking_goal_x,
+            goal_progress_weight=self.goal_progress_weight,
+            retreat_penalty_weight=self.retreat_penalty_weight,
+            goal_potential_scale=self.goal_potential_scale,
         )
         shaped_reward[team_id] = (
-            shaped_reward.get(team_id, 0.0) + progress_bonus + clear_bonus
+            shaped_reward.get(team_id, 0.0) + goal_progress_bonus + retreat_penalty
         )
-        shaping_by_team[team_id]["progress_bonus"] = progress_bonus
-        shaping_by_team[team_id]["clear_bonus"] = clear_bonus
+        shaping_by_team[team_id]["goal_progress_bonus"] = goal_progress_bonus
+        shaping_by_team[team_id]["retreat_penalty"] = retreat_penalty
+        shaping_by_team[team_id]["potential_delta"] = potential_delta
         shaping_by_team[team_id]["shaped_reward"] = shaped_reward[team_id]
 
 
@@ -355,8 +402,8 @@ class RewardShapingMetricsCallbacks(DefaultCallbacks):
     """
 
     def on_episode_start(self, *, worker, base_env, policies, episode, env_index=None, **kwargs):
-        episode.user_data["reward_shaping_progress_bonus_total"] = 0.0
-        episode.user_data["reward_shaping_clear_bonus_total"] = 0.0
+        episode.user_data["reward_shaping_goal_progress_bonus_total"] = 0.0
+        episode.user_data["reward_shaping_retreat_penalty_total"] = 0.0
         episode.user_data["reward_shaping_delta_total"] = 0.0
 
     def on_episode_step(self, *, worker, base_env, episode, env_index=None, **kwargs):
@@ -381,21 +428,23 @@ class RewardShapingMetricsCallbacks(DefaultCallbacks):
             if not isinstance(shaping, dict):
                 continue
 
-            progress_bonus = float(shaping.get("progress_bonus", 0.0))
-            clear_bonus = float(shaping.get("clear_bonus", 0.0))
+            goal_progress_bonus = float(shaping.get("goal_progress_bonus", 0.0))
+            retreat_penalty = float(shaping.get("retreat_penalty", 0.0))
             base_reward = float(shaping.get("base_reward", 0.0))
             shaped_reward = float(shaping.get("shaped_reward", base_reward))
 
-            episode.user_data["reward_shaping_progress_bonus_total"] += progress_bonus
-            episode.user_data["reward_shaping_clear_bonus_total"] += clear_bonus
+            episode.user_data["reward_shaping_goal_progress_bonus_total"] += (
+                goal_progress_bonus
+            )
+            episode.user_data["reward_shaping_retreat_penalty_total"] += retreat_penalty
             episode.user_data["reward_shaping_delta_total"] += shaped_reward - base_reward
 
     def on_episode_end(self, *, worker, base_env, policies, episode, env_index=None, **kwargs):
-        episode.custom_metrics["reward_shaping_progress_bonus_total"] = episode.user_data[
-            "reward_shaping_progress_bonus_total"
+        episode.custom_metrics["reward_shaping_goal_progress_bonus_total"] = episode.user_data[
+            "reward_shaping_goal_progress_bonus_total"
         ]
-        episode.custom_metrics["reward_shaping_clear_bonus_total"] = episode.user_data[
-            "reward_shaping_clear_bonus_total"
+        episode.custom_metrics["reward_shaping_retreat_penalty_total"] = episode.user_data[
+            "reward_shaping_retreat_penalty_total"
         ]
         episode.custom_metrics["reward_shaping_delta_total"] = episode.user_data[
             "reward_shaping_delta_total"
@@ -486,20 +535,24 @@ def create_rllib_env(env_config: dict = {}):
             env = TeamRewardShapingWrapper(
                 env,
                 shaping_mode=shaping_mode,
-                ball_progress_weight=env_config.get("ball_progress_weight", 0.05),
-                defensive_clear_weight=env_config.get("defensive_clear_weight", 0.1),
-                defensive_half_threshold=env_config.get(
-                    "defensive_half_threshold", -6.0
+                goal_progress_weight=env_config.get("goal_progress_weight", 0.75),
+                retreat_penalty_weight=env_config.get(
+                    "retreat_penalty_weight", 1.25
+                ),
+                goal_potential_scale=env_config.get(
+                    "goal_potential_scale", 6.0
                 ),
                 debug=env_config.get("reward_shaping_debug", False),
             )
         elif env_type is soccer_twos.EnvType.multiagent_team:
             env = MultiagentTeamRewardShapingWrapper(
                 env,
-                ball_progress_weight=env_config.get("ball_progress_weight", 0.05),
-                defensive_clear_weight=env_config.get("defensive_clear_weight", 0.0),
-                defensive_half_threshold=env_config.get(
-                    "defensive_half_threshold", -4.0
+                goal_progress_weight=env_config.get("goal_progress_weight", 0.75),
+                retreat_penalty_weight=env_config.get(
+                    "retreat_penalty_weight", 1.25
+                ),
+                goal_potential_scale=env_config.get(
+                    "goal_potential_scale", 6.0
                 ),
                 debug=env_config.get("reward_shaping_debug", False),
             )

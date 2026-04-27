@@ -21,8 +21,9 @@ from soccer_twos import evaluate as soccer_evaluate
 
 ALGORITHM = "PPO"
 DEFAULT_OUTPUT = "checkpoint_winrates.jsonl"
-DEFAULT_EPISODES = 10
+DEFAULT_EPISODES = 20
 DEFAULT_BASE_PORT = 65000
+DEFAULT_CHECKPOINT_INTERVAL = 100
 
 RAY_RESULTS_DIR = REPO_ROOT / "ray_results"
 OPPONENT_MODULES = {
@@ -32,21 +33,17 @@ OPPONENT_MODULES = {
 
 
 def get_agent_kind(run_name):
-    if run_name.startswith("PPO_baseline"):
-        # PPO baseline against random team agent
-        return "ppo_baseline"
-    elif run_name.startswith("PPO_reward_exp"):
-        # PPO with reward shaping against random team agent
-        return "ppo_reward_shaping"
-    elif run_name.startswith("PPO_selfplay_baseline"):
+    if run_name.startswith("PPO_vs_random"):
+        # PPO with reward shaping / baseline alg against random team agent
+        return "ppo_vs_random"
+    elif run_name.startswith("PPO_selfplay"):
         # PPO self-play trained team agent
-        return "selfplay_ppo_baseline"
-    elif run_name.startswith("PPO_selfplay_reward"):
-        # PPO self-play trained team agent with reward shaping
-        return "selfplay_ppo_reward"
+        return "selfplay"
     elif run_name.startswith("PPO_historical_selfplay"):
-        # PPO trained against sampled frozen historical self-play opponents
         return "historical_selfplay"
+    elif run_name.startswith("PPO_seeded_historical_selfplay"):
+        # PPO trained against sampled frozen historical self-play opponents
+        return "seededrun_selfplay"
     raise ValueError(f"Unrecognized run name: {run_name}")
 
 
@@ -231,11 +228,10 @@ def parse_args():
         "--run-kind",
         default=None,
         choices=(
-            "ppo_baseline",
-            "ppo_reward_shaping",
-            "selfplay_ppo_baseline",
-            "selfplay_ppo_reward",
+            "ppo_vs_random",
+            "selfplay",
             "historical_selfplay",
+            "seededrun_selfplay",
         ),
         help="Optional run-kind filter.",
     )
@@ -264,35 +260,48 @@ def iter_checkpoints(run_name_filter=None, run_kind_filter=None, trial_dir_filte
     )
 
     for checkpoint_path in checkpoint_paths:
+        checkpoint_iteration = int(checkpoint_path.name.split("-")[-1])
+        if checkpoint_iteration % DEFAULT_CHECKPOINT_INTERVAL != 0:
+            continue
         run_name = checkpoint_path.parents[2].name
         if run_name_filter and run_name != run_name_filter:
             continue
-        if run_kind_filter and get_agent_kind(run_name) not in run_kind_filter:
+        if run_kind_filter and get_agent_kind(run_name) != run_kind_filter:
             continue
         if trial_dir_path and checkpoint_path.parents[1].resolve() != trial_dir_path:
             continue
         yield checkpoint_path
 
 
+def checkpoint_path_for_record(run_name: str, trial_dir: str, checkpoint_iteration: int) -> Path:
+    return (
+        RAY_RESULTS_DIR
+        / run_name
+        / trial_dir
+        / f"checkpoint_{checkpoint_iteration:06d}"
+        / f"checkpoint-{checkpoint_iteration}"
+    )
+
+
 def build_checkpoint_record(checkpoint_path: Path):
     run_name = checkpoint_path.parents[2].name
     trial_dir = checkpoint_path.parents[1]
-    checkpoint_dir = checkpoint_path.parent
     checkpoint_iteration = int(checkpoint_path.name.split("-")[-1])
     agent_kind = get_agent_kind(run_name)
 
     return {
         "run_name": run_name,
-        "trial_dir": str(trial_dir),
-        "checkpoint_dir": str(checkpoint_dir),
-        "checkpoint_path": str(checkpoint_path),
+        "trial_dir": trial_dir.name,
         "checkpoint_iteration": checkpoint_iteration,
         "agent_kind": agent_kind,
     }
 
-def sweep_key(checkpoint_path, opponent_module, episodes):
+
+def sweep_key(run_name, trial_dir, checkpoint_iteration, opponent_module, episodes):
     return (
-        str(Path(checkpoint_path).resolve()),
+        run_name,
+        trial_dir,
+        int(checkpoint_iteration),
         opponent_module,
         int(episodes),
     )
@@ -317,13 +326,29 @@ def load_completed_sweeps(output_path: Path):
                 )
                 continue
 
-            checkpoint_path = record.get("checkpoint_path")
+            run_name = record.get("run_name")
+            trial_dir = record.get("trial_dir")
+            checkpoint_iteration = record.get("checkpoint_iteration")
             opponent = record.get("opponent")
             episodes = record.get("episodes")
-            if checkpoint_path is None or opponent is None or episodes is None:
+            if (
+                run_name is None
+                or trial_dir is None
+                or checkpoint_iteration is None
+                or opponent is None
+                or episodes is None
+            ):
                 continue
 
-            completed.add(sweep_key(checkpoint_path, opponent, int(episodes)))
+            completed.add(
+                sweep_key(
+                    run_name,
+                    trial_dir,
+                    int(checkpoint_iteration),
+                    opponent,
+                    int(episodes),
+                )
+            )
 
     return completed
 
@@ -354,8 +379,15 @@ def close_agent(agent):
         trainer.stop()
 
 
-def evaluate_checkpoint(checkpoint_path: Path, opponent_agent, opponent_module: str, episodes: int, base_port: int):
-    checkpoint_agent_name = str(checkpoint_path)
+def evaluate_checkpoint(
+    checkpoint_path: Path,
+    agent_kind: str,
+    opponent_agent,
+    opponent_module: str,
+    episodes: int,
+    base_port: int,
+):
+    checkpoint_agent_name = agent_kind
     checkpoint_agent = load_team_agent_for_checkpoint(checkpoint_path, base_port=base_port + 2)
     env = soccer_twos.make(base_port=base_port + 3)
 
@@ -392,12 +424,21 @@ def main():
     completed_sweeps = set() if args.force else load_completed_sweeps(output_path)
     total_checkpoint_count = len(checkpoint_paths)
     if completed_sweeps:
-        checkpoint_paths = [
-            checkpoint_path
-            for checkpoint_path in checkpoint_paths
-            if sweep_key(checkpoint_path, opponent_module, args.episodes)
-            not in completed_sweeps
-        ]
+        filtered_checkpoint_paths = []
+        for checkpoint_path in checkpoint_paths:
+            record = build_checkpoint_record(checkpoint_path)
+            if (
+                sweep_key(
+                    record["run_name"],
+                    record["trial_dir"],
+                    record["checkpoint_iteration"],
+                    opponent_module,
+                    args.episodes,
+                )
+                not in completed_sweeps
+            ):
+                filtered_checkpoint_paths.append(checkpoint_path)
+        checkpoint_paths = filtered_checkpoint_paths
         skipped_count = total_checkpoint_count - len(checkpoint_paths)
     else:
         skipped_count = 0
@@ -429,6 +470,7 @@ def main():
                 record["episodes"] = args.episodes
                 record["winrates"] = evaluate_checkpoint(
                     checkpoint_path,
+                    record["agent_kind"],
                     opponent_agent,
                     opponent_module,
                     args.episodes,

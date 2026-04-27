@@ -1,17 +1,8 @@
 """Unified reward-shaping PPO experiments.
 
-Legacy team-vs-random shaped runs:
-    python exp_reward_shaping.py --mode team_vs_random --ball-progress-weight 0.05 --defensive-clear-weight 0.0 --port 55000 --exp-name PPO_reward_exp_prog005_clear0
-    python exp_reward_shaping.py --mode team_vs_random --ball-progress-weight 0.05 --defensive-clear-weight 0.1 --port 55000 --exp-name PPO_reward_exp_prog005_clear01
-    python exp_reward_shaping.py --mode team_vs_random --ball-progress-weight 0.1 --defensive-clear-weight 0.0 --port 55000 --exp-name PPO_reward_exp_prog01_clear00
-    python exp_reward_shaping.py --mode team_vs_random --ball-progress-weight 0.1 --defensive-clear-weight 0.1 --port 55000 --exp-name PPO_reward_exp_prog01_clear01
-
-Legacy self-play shaped runs:
-    python exp_reward_shaping.py --mode selfplay --ball-progress-weight 0.05 --defensive-clear-weight 0.0 --port 57000 --exp-name PPO_selfplay_reward_prog005_clear0
-    python exp_reward_shaping.py --mode selfplay --ball-progress-weight 0.05 --defensive-clear-weight 0.1 --port 50000 --exp-name PPO_selfplay_reward_prog005_clear01
-
-Tuned self-play shaped run:
-    python exp_reward_shaping.py --mode selfplay --ball-progress-weight 0.05 --defensive-clear-weight 0.1 --lr 2.5e-5 --num-sgd-iter 10 --sgd-batch-size 128 --port 50000 --exp-name PPO_selfplay_reward_prog005_clear01_lr25e6_sgd10
+Example shaped runs:
+    python exp_reward_shaping.py --mode team_vs_random --goal-progress-weight 0.75 --retreat-penalty-weight 1.25 --goal-potential-scale 6.0 --port 55000
+    python exp_reward_shaping.py --mode selfplay --goal-progress-weight 0.75 --retreat-penalty-weight 1.25 --goal-potential-scale 6.0 --port 57000
 
 If --exp-name is omitted, the run name is generated from mode, reward weights,
 lr, num_sgd_iter, and sgd_batch_size.
@@ -31,7 +22,6 @@ DEFAULT_TIMESTEPS_TOTAL = 5000000
 DEFAULT_LR = 5e-5
 DEFAULT_NUM_SGD_ITER = 30
 DEFAULT_SGD_BATCH_SIZE = 128
-DEFAULT_DEFENSIVE_HALF_THRESHOLD = -4.0
 
 
 def parse_args(default_mode="team_vs_random"):
@@ -45,16 +35,16 @@ def parse_args(default_mode="team_vs_random"):
         help="Training setup: team_vs_random for TeamVsPolicyWrapper, selfplay for multiagent teams.",
     )
     parser.add_argument(
-        "--ball-progress-weight", "-WBP", type=float, default=0.05,
-        help="Reward added for moving the ball toward the opponent goal.",
+        "--goal-progress-weight", "-WGP", type=float, default=0.75,
+        help="Reward weight for increasing exponential goal-proximity potential.",
     )
     parser.add_argument(
-        "--defensive-clear-weight", "-WD", type=float, default=0.0,
-        help="Reward added for moving the ball out of the defensive half.",
+        "--retreat-penalty-weight", "-WR", type=float, default=1.25,
+        help="Penalty weight for decreases in exponential goal-proximity potential.",
     )
-    parser.add_argument( 
-        "--defensive-half-threshold", "-TD", type=float, default=DEFAULT_DEFENSIVE_HALF_THRESHOLD,
-        help="Ball x-position threshold used by the defensive-clear shaping term.",
+    parser.add_argument(
+        "--goal-potential-scale", "-WGS", type=float, default=6.0,
+        help="Distance scale for exp(-distance_to_goal / scale) reward shaping.",
     )
     parser.add_argument(
         "--lr", type=float, default=DEFAULT_LR, help="PPO learning rate.",
@@ -113,8 +103,9 @@ def hparam_token(value):
 def default_exp_name(args, mode):
     prefix = "PPO_reward_exp" if mode == "team_vs_random" else "PPO_selfplay_reward"
     return (
-        f"{prefix}_prog{weight_token(args.ball_progress_weight)}"
-        f"_clear{weight_token(args.defensive_clear_weight)}"
+        f"{prefix}_goal{weight_token(args.goal_progress_weight)}"
+        f"_retreat{weight_token(args.retreat_penalty_weight)}"
+        f"_scale{weight_token(args.goal_potential_scale)}"
         f"_lr{hparam_token(args.lr)}"
         f"_sgd{args.num_sgd_iter}"
         f"_mb{args.sgd_batch_size}"
@@ -138,9 +129,9 @@ def reward_env_config(args, mode, include_shaping=True):
         env_config.update(
             {
                 "reward_shaping": "custom",
-                "ball_progress_weight": args.ball_progress_weight,
-                "defensive_clear_weight": args.defensive_clear_weight,
-                "defensive_half_threshold": args.defensive_half_threshold,
+                "goal_progress_weight": args.goal_progress_weight,
+                "retreat_penalty_weight": args.retreat_penalty_weight,
+                "goal_potential_scale": args.goal_potential_scale,
             }
         )
     return env_config
@@ -205,8 +196,9 @@ def train(args):
 
     print(f"Starting reward-shaped PPO run: {exp_name}")
     print(f"mode={mode}")
-    print(f"ball_progress_weight={args.ball_progress_weight}")
-    print(f"defensive_clear_weight={args.defensive_clear_weight}")
+    print(f"goal_progress_weight={args.goal_progress_weight}")
+    print(f"retreat_penalty_weight={args.retreat_penalty_weight}")
+    print(f"goal_potential_scale={args.goal_potential_scale}")
     print(f"lr={args.lr}")
     print(f"num_sgd_iter={args.num_sgd_iter}")
     print(f"sgd_minibatch_size={args.sgd_batch_size}")

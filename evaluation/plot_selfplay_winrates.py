@@ -11,32 +11,24 @@ EVALUATION_DIR = Path(__file__).resolve().parent
 DEFAULT_RANDOM_RESULTS = EVALUATION_DIR / "random_eval.jsonl"
 DEFAULT_CEIA_RESULTS = EVALUATION_DIR / "ceia_eval.jsonl"
 DEFAULT_OUTPUT_DIR = EVALUATION_DIR / "plots"
+RAY_RESULTS_DIR = EVALUATION_DIR.parent / "ray_results"
 
+COLORS = ["#A27F5C","#AC693C","#ECB392","#2D5944","#BAC8B1","#043C5C","#047104","#3C9EA4"]
 PLOT_SUITES = {
     "selfplay": {
         "title": "Self-play PPO checkpoint win rate",
         "side_title": "Self-play PPO side-specific win rate",
         "labels": {
-            "PPO_selfplay_baseline_teams": "Self-play baseline",
-            "PPO_selfplay_reward_prog005_clear0": "Self-play progress",
-            "PPO_selfplay_reward_prog005_clear01": "Self-play progress + clear",
+            "PPO_selfplay_baseline_teams": "baseline",
+            "PPO_selfplay_reward_prog005_clear0": "PR",
+            "PPO_selfplay_reward_prog005_clear01": "PR + CR",
+            "PPO_selfplay_reward_prog005_clear01_lr2p5em05_sgd10_mb128": "PR + CR + low LR",
         },
         "colors": {
-            "PPO_selfplay_baseline_teams": "#4059ad",
-            "PPO_selfplay_reward_prog005_clear0": "#d95f02",
-            "PPO_selfplay_reward_prog005_clear01": "#1b9e77",
-        },
-    },
-    "selfplay_tuned": {
-        "title": "Tuned self-play PPO checkpoint win rate",
-        "side_title": "Tuned self-play PPO side-specific win rate",
-        "labels": {
-            "PPO_selfplay_baseline_teams_lr25e6_sgd10": "Baseline lr 2.5e-5 / SGD 10",
-            "PPO_selfplay_reward_prog005_clear01_lr25e6_sgd10": "Progress + clear lr 2.5e-5 / SGD 10",
-        },
-        "colors": {
-            "PPO_selfplay_baseline_teams_lr25e6_sgd10": "#4059ad",
-            "PPO_selfplay_reward_prog005_clear01_lr25e6_sgd10": "#1b9e77",
+            "PPO_selfplay_baseline_teams": COLORS[1],
+            "PPO_selfplay_reward_prog005_clear0": COLORS[2],
+            "PPO_selfplay_reward_prog005_clear01": COLORS[3],
+            "PPO_selfplay_reward_prog005_clear01_lr2p5em05_sgd10_mb128": COLORS[5],
         },
     },
     "historical": {
@@ -44,35 +36,61 @@ PLOT_SUITES = {
         "side_title": "Historical-opponent self-play PPO side-specific win rate",
         "labels": {
             "PPO_historical_selfplay_baseline_lr5em05_sgd30": "baseline",
-            "PPO_historical_selfplay_baseline_lr5em05_sgd30_larger_model": "baseline - large",
-            "PPO_historical_selfplay_reward_prog005_clear0_lr5em05_sgd30": "PR",
-            "PPO_historical_selfplay_reward_prog005_clear0_lr2em05_sgd10": "PR + low LR",
-            "PPO_historical_selfplay_reward_prog005_clear0_lr5em05_sgd30_updateInterval50": "PR + longer update"
+            "PPO_historical_selfplay_reward_prog005_clear0_lr5em05_sgd30": "PR, LR 5e-5",
+            "PPO_historical_selfplay_reward_prog005_clear005_lr2em05_sgd10_seedrunC_ocp03": "PR, LR 2e-5, CR + ocp03",
+            "PPO_historical_selfplay_reward_prog005_clear005_lr2em05_sgd10_seedrunA": "PR, LR 2e-5, CR",
+            "PPO_historical_selfplay_reward_prog005_clear0_lr2em05_sgd10_seedrun0": "PR, LR 2e-5",
+            "PPO_historical_selfplay_reward_prog005_clear0_lr5em05_sgd30_updateInterval50": "PR, LR 5e-5, longer update"
         },
         "colors": {
-            "PPO_historical_selfplay_baseline_lr5em05_sgd30": "#4059ad",
-            "PPO_historical_selfplay_baseline_lr5em05_sgd30_larger_model": "#cfbc53",
-            "PPO_historical_selfplay_reward_prog005_clear0_lr5em05_sgd30": "#1b9e77",
-            "PPO_historical_selfplay_reward_prog005_clear0_lr2em05_sgd10": "#d95f02",
-            "PPO_historical_selfplay_reward_prog005_clear0_lr5em05_sgd30_updateInterval50": "#a270b3"
+            "PPO_historical_selfplay_baseline_lr5em05_sgd30": COLORS[1],
+            "PPO_historical_selfplay_reward_prog005_clear0_lr5em05_sgd30": COLORS[2],
+            "PPO_historical_selfplay_reward_prog005_clear005_lr2em05_sgd10_seedrunC_ocp03": COLORS[3],
+            "PPO_historical_selfplay_reward_prog005_clear005_lr2em05_sgd10_seedrunA": COLORS[4],
+            "PPO_historical_selfplay_reward_prog005_clear0_lr2em05_sgd10_seedrun0": COLORS[5],
+            "PPO_historical_selfplay_reward_prog005_clear0_lr5em05_sgd30_updateInterval50": COLORS[6]
+        },
+    },
+    "seeded_historical":{
+                "title": "Seeded Historical-opponent self-play PPO checkpoint win rate",
+        "side_title": "Seeded Historical-opponent self-play PPO side-specific win rate",
+        "labels": {
+            "PPO_seeded_historical_selfplay_reward_prog005_clear005_lr2em05_sgd10_runA": "PR, LR 2e-5, CR",
+            # "PPO_seeded_historical_selfplay_reward_prog005_clear0_lr2em05_sgd10_runC": "round2",
+            # below conducted with new reward shaping
+            "PPO_seeded_historical_selfplay_reward_goal075_retreat125_scale6_lr2p5em05_sgd10_runD": "round 2 - lr 2.5e-5",
+            "PPO_seeded_historical_selfplay_reward_goal075_retreat125_scale6_lr1em04_sgd6_runE": "round 2 - lr 1e-4",
+            "PPO_seeded_historical_selfplay_reward_goal075_retreat125_scale6_lr5em05_sgd6_runF": "round 2 - lr 5e-5",
+            "PPO_seeded_historical_selfplay_reward_goal075_retreat125_scale6_lr5em05_sgd6_runG": "round 2 - lr 5e-5 + longer opponent update interval",
+            "PPO_seeded_historical_selfplay_reward_goal200_retreat250_scale6_lr5em05_sgd6_runH": "round 2 - lr 5e-5 + longer opponent update + larger reward"   
+        },
+        "colors": {
+            "PPO_seeded_historical_selfplay_reward_prog005_clear005_lr2em05_sgd10_runA": COLORS[1],
+            # "PPO_seeded_historical_selfplay_reward_prog005_clear0_lr2em05_sgd10_runC": "#283618",
+            "PPO_seeded_historical_selfplay_reward_goal075_retreat125_scale6_lr2p5em05_sgd10_runD": COLORS[2],
+            "PPO_seeded_historical_selfplay_reward_goal075_retreat125_scale6_lr1em04_sgd6_runE": COLORS[3],
+            "PPO_seeded_historical_selfplay_reward_goal075_retreat125_scale6_lr5em05_sgd6_runF": COLORS[4],
+            "PPO_seeded_historical_selfplay_reward_goal075_retreat125_scale6_lr5em05_sgd6_runG": COLORS[5],
+            "PPO_seeded_historical_selfplay_reward_goal200_retreat250_scale6_lr5em05_sgd6_runH": COLORS[6]
+
         },
     },
     "team": {
         "title": "Team-vs-random PPO checkpoint win rate",
         "side_title": "Team-vs-random PPO side-specific win rate",
         "labels": {
-            "PPO_baseline_team_vs_random": "Team baseline",
-            "PPO_reward_exp_prog005_clear0": "Progress 0.05",
-            "PPO_reward_exp_prog005_clear01": "Progress 0.05 + clear 0.1",
-            "PPO_reward_exp_prog01_clear00": "Progress 0.1",
-            "PPO_reward_exp_prog01_clear01": "Progress 0.1 + clear 0.1",
+            "PPO_vs_random_baseline": "Team baseline",
+            "PPO_vs_random_reward_exp_prog005_clear0": "Progress 0.05",
+            "PPO_vs_random_reward_exp_prog005_clear01": "Progress 0.05 + clear 0.1",
+            "PPO_vs_random_reward_exp_prog01_clear00": "Progress 0.1",
+            "PPO_vs_random_reward_exp_prog01_clear01": "Progress 0.1 + clear 0.1",
         },
         "colors": {
-            "PPO_baseline_team_vs_random": "#4059ad",
-            "PPO_reward_exp_prog005_clear0": "#d95f02",
-            "PPO_reward_exp_prog005_clear01": "#1b9e77",
-            "PPO_reward_exp_prog01_clear00": "#7570b3",
-            "PPO_reward_exp_prog01_clear01": "#e7298a",
+            "PPO_vs_random_baseline": COLORS[1],
+            "PPO_vs_random_reward_exp_prog005_clear0": COLORS[2],
+            "PPO_vs_random_reward_exp_prog005_clear01": COLORS[3],
+            "PPO_vs_random_reward_exp_prog01_clear00": COLORS[4],
+            "PPO_vs_random_reward_exp_prog01_clear01": COLORS[5],
         },
     },
 }
@@ -109,8 +127,9 @@ def load_rows(path, run_labels):
             rows[run_name].append(
                 {
                     "run_name": run_name,
+                    "trial_dir": record["trial_dir"],
                     "checkpoint_iteration": record["checkpoint_iteration"],
-                    "checkpoint_path": record["checkpoint_path"],
+                    "checkpoint_path": checkpoint_path_for_record(record),
                     "overall": metrics["overall"],
                     "blue": metrics["blue"],
                     "orange": metrics["orange"],
@@ -127,11 +146,18 @@ def load_rows(path, run_labels):
 
 
 def get_agent_metrics(record):
-    opponent = record["opponent"]
-    for policy_name, metrics in record["winrates"].items():
-        if policy_name != opponent:
-            return metrics
-    raise ValueError(f"No checkpoint policy metrics found for {record['checkpoint_path']}")
+    return record["winrates"][record["agent_kind"]]
+
+
+def checkpoint_path_for_record(record):
+    checkpoint_iteration = int(record["checkpoint_iteration"])
+    return str(
+        RAY_RESULTS_DIR
+        / record["run_name"]
+        / record["trial_dir"]
+        / f"checkpoint_{checkpoint_iteration:06d}"
+        / f"checkpoint-{checkpoint_iteration}"
+    )
 
 
 def best_rows(rows_by_opponent):
@@ -191,7 +217,7 @@ def plot_overall(rows_by_opponent, output_path, run_labels, run_colors, title):
         axis.set_ylim(0.0, 1.05)
 
     axes[0].set_ylabel("Overall win rate")
-    axes[1].legend(loc="lower right", fontsize=8)
+    axes[1].legend(loc="upper left", fontsize=8)
     fig.suptitle(title)
     fig.tight_layout()
     fig.savefig(output_path, dpi=180)
@@ -244,7 +270,7 @@ def plot_side_breakdown(rows_by_opponent, output_path, run_labels, title):
             if col_idx == 0:
                 axis.set_ylabel("Win rate")
             if row_idx == 0 and col_idx == len(run_names) - 1:
-                axis.legend(loc="lower right", fontsize=8)
+                axis.legend(loc="upper left", fontsize=8)
 
     fig.suptitle(title)
     fig.tight_layout()

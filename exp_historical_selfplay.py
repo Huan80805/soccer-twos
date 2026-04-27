@@ -4,7 +4,7 @@ Baseline historical self-play:
     python exp_historical_selfplay.py --port 58000
 
 Reward-shaped historical self-play, implemented but off by default:
-    python exp_historical_selfplay.py --port 58000 --reward-shaping custom --ball-progress-weight 0.05 --defensive-clear-weight 0.1
+    python exp_historical_selfplay.py --port 58000 --reward-shaping custom --goal-progress-weight 0.75 --retreat-penalty-weight 1.25 --goal-potential-scale 6.0
 
 This follows the same high-level pattern as Team Pequi's
 `ppo_deepmind_selfplay_v4.py`: train a `current_team` policy, periodically save
@@ -297,7 +297,7 @@ def parse_args():
         help="Maximum saved opponents to keep. Use 0 for unbounded history.",
     )
     parser.add_argument(
-        "--opponent-current-prob",
+        "--opponent-current-prob", "-ocp",
         type=float,
         default=DEFAULT_OPPONENT_CURRENT_PROB,
         help=(
@@ -311,9 +311,27 @@ def parse_args():
         default="none",
         help="Enable symmetric multiagent-team reward shaping.",
     )
-    parser.add_argument("--ball-progress-weight", "-WBP", type=float, default=0.05)
-    parser.add_argument("--defensive-clear-weight", "-WD", type=float, default=0.0)
-    parser.add_argument("--defensive-half-threshold", "-TD", type=float, default=-4.0)
+    parser.add_argument(
+        "--goal-progress-weight",
+        "-WGP",
+        type=float,
+        default=0.75,
+        help="Reward weight for increasing exponential goal-proximity potential.",
+    )
+    parser.add_argument(
+        "--retreat-penalty-weight",
+        "-WR",
+        type=float,
+        default=1.25,
+        help="Penalty weight for decreases in exponential goal-proximity potential.",
+    )
+    parser.add_argument(
+        "--goal-potential-scale",
+        "-WGS",
+        type=float,
+        default=6.0,
+        help="Distance scale for exp(-distance_to_goal / scale) reward shaping.",
+    )
     parser.add_argument("--checkpoint-freq", type=int, default=100)
     parser.add_argument("--local-dir", default="./ray_results")
     parser.add_argument("--exp-name", default=None)
@@ -321,6 +339,11 @@ def parse_args():
         "--debug",
         action="store_true",
         help="Print matchmaker, historical-opponent, and reward-shaping debug information.",
+    )
+    parser.add_argument(
+        "--restore",
+        default=None,
+        help="Path to a Ray checkpoint to resume from, e.g. ray_results/.../checkpoint_004400/checkpoint-4400",
     )
     return parser.parse_args()
 
@@ -339,8 +362,9 @@ def default_exp_name(args):
     if args.reward_shaping == "custom":
         return (
             "PPO_historical_selfplay_reward"
-            f"_prog{weight_token(args.ball_progress_weight)}"
-            f"_clear{weight_token(args.defensive_clear_weight)}"
+            f"_goal{weight_token(args.goal_progress_weight)}"
+            f"_retreat{weight_token(args.retreat_penalty_weight)}"
+            f"_scale{weight_token(args.goal_potential_scale)}"
             f"_lr{hparam_token(args.lr)}"
             f"_sgd{args.num_sgd_iter}"
             f"_updateInterval{args.opponent_update_interval}"
@@ -363,9 +387,9 @@ def env_config(args, include_shaping=True):
         config.update(
             {
                 "reward_shaping": "custom",
-                "ball_progress_weight": args.ball_progress_weight,
-                "defensive_clear_weight": args.defensive_clear_weight,
-                "defensive_half_threshold": args.defensive_half_threshold,
+                "goal_progress_weight": args.goal_progress_weight,
+                "retreat_penalty_weight": args.retreat_penalty_weight,
+                "goal_potential_scale": args.goal_potential_scale,
                 "reward_shaping_debug": args.debug,
             }
         )
@@ -412,6 +436,9 @@ def main():
 
     print(f"Starting historical self-play run: {exp_name}")
     print(f"reward_shaping={args.reward_shaping}")
+    print(f"goal_progress_weight={args.goal_progress_weight}")
+    print(f"retreat_penalty_weight={args.retreat_penalty_weight}")
+    print(f"goal_potential_scale={args.goal_potential_scale}")
     print(f"history_save_interval={args.history_save_interval}")
     print(f"opponent_update_interval={args.opponent_update_interval}")
     print(f"history_max_size={args.history_max_size}")
@@ -421,6 +448,7 @@ def main():
     analysis = tune.run(
         "PPO",
         name=exp_name,
+        restore=args.restore,
         config={
             "num_gpus": 0,
             "num_workers": args.num_workers,
@@ -433,7 +461,7 @@ def main():
             "env_config": env_config(args),
             "model": {
                 "vf_share_layers": True,
-                "fcnet_hiddens": [512, 512],
+                "fcnet_hiddens": [256, 256],
                 "fcnet_activation": "relu",
 
             },
