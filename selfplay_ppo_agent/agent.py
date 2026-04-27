@@ -11,12 +11,17 @@ from soccer_twos import AgentInterface
 
 
 ALGORITHM = "PPO"
+# CHECKPOINT_PATH = os.path.join(
+#     os.path.dirname(os.path.abspath(__file__)),
+#     "checkpoint",
+#     "checkpoint-4600",
+# )
+
 CHECKPOINT_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
-    "checkpoint",
-    "checkpoint-4600",
+    "checkpoint3rd",
+    "checkpoint-3400",
 )
-
 
 class DummyEnv(BaseEnv):
     """Minimal env used only while restoring the checkpoint — never stepped."""
