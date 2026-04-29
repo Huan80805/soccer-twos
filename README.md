@@ -1,4 +1,8 @@
-# Soccer-Twos Starter Kit
+## Team 19 Soccer-Twos Repo 
+
+Placed 2nd among 72 teams in CS 8803 DRL class
+
+## Soccer-Twos Starter Kit
 
 Example training/testing scripts for the Soccer-Twos environment. This starter code is modified from the example code provided in https://github.com/bryanoliveira/soccer-twos-starter.
 
